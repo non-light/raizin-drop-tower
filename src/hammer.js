@@ -54,6 +54,11 @@ export class Hammer {
     this.targetY = blockCenterY + H.armLength * Math.sin(-H.impactAngle)
   }
 
+  /** 追従を待たずに待機高さへ飛ばす。仕切り直しのとき用。 */
+  snapToAim() {
+    this.pivot.position.y = this.targetY
+  }
+
   /** 振り始める。振り下ろし切った瞬間に onImpact() が1度だけ呼ばれる。 */
   swing(onImpact) {
     this.onImpact = onImpact

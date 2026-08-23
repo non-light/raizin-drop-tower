@@ -11,7 +11,7 @@ html, body {
   -webkit-user-select: none;
 }
 
-#scene { display: block; width: 100vw; height: 100vh; }
+#scene { display: block; width: 100vw; height: 100vh; cursor: grab; touch-action: none; }
 
 #ui {
   position: fixed;
@@ -120,12 +120,19 @@ html, body {
 #hint {
   position: absolute;
   left: 50%;
-  bottom: 24px;
+  bottom: 22px;
   transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 8px;
+  max-width: 92vw;
   font-size: 12px;
   color: rgba(190, 205, 240, 0.62);
-  white-space: nowrap;
 }
+
+#hint .sep { opacity: 0.4; }
+#hint b { color: rgba(220, 232, 255, 0.85); font-weight: 600; }
 
 /* --- 結果表示 --- */
 #result {

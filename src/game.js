@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { CONFIG } from './config.js'
-import { createScene, resize } from './scene.js'
+import { createScene } from './scene.js'
+import { OrbitCam } from './orbitcam.js'
 import { createWorld } from './physics.js'
 import { buildTower, syncMesh, tiltDegrees } from './tower.js'
 import { Hammer } from './hammer.js'
@@ -22,13 +23,16 @@ function overhitExcess(power) {
 }
 
 export class Game {
-  constructor(canvas, raizinTexture) {
-    const { renderer, scene, camera } = createScene(canvas)
+  constructor(canvas, sprites) {
+    const { renderer, scene } = createScene(canvas)
     this.renderer = renderer
     this.scene = scene
-    this.camera = camera
     this.canvas = canvas
-    this.raizinTexture = raizinTexture
+    this.sprites = sprites
+    this.keepTextures = new Set(Object.values(sprites))
+
+    this.orbit = new OrbitCam(canvas)
+    this.camera = this.orbit.camera
 
     this.cfg = CONFIG
     this.ui = new UI()
@@ -37,29 +41,30 @@ export class Game {
     this.pointer = new THREE.Vector2()
     this.clock = new THREE.Clock()
     this.time = 0
+    this.drag = null
 
     this.reset()
     this.bindInput()
 
-    addEventListener('resize', () => resize(this.renderer, this.camera))
-    resize(this.renderer, this.camera)
+    addEventListener('resize', () => this.resize())
+    this.resize()
+  }
+
+  resize() {
+    const [w, h] = this.orbit.resize()
+    this.renderer.setSize(w, h, false)
   }
 
   // ---------------------------------------------------------------- setup
 
   reset() {
-    // 前回のオブジェクトを片付ける
     if (this.world) {
       for (const p of this.pieces) {
         this.world.removeBody(p.body)
         this.scene.remove(p.mesh)
-        p.mesh.traverse((o) => {
-          o.geometry?.dispose?.()
-          // 雷神の画像はゲーム全体で使い回すので捨てない
-          if (o.material?.map && o.material.map !== this.raizinTexture) o.material.map.dispose()
-          o.material?.dispose?.()
-        })
+        this.disposeTree(p.mesh)
       }
+      this.raizin?.view.dispose()
     }
 
     const { world, mats } = createWorld()
@@ -72,13 +77,13 @@ export class Game {
       scene: this.scene,
       world,
       mats,
-      raizinTexture: this.raizinTexture,
+      sprites: this.sprites,
     })
     this.blocks = blocks
     this.raizin = raizin
     this.pieces = [...blocks, raizin]
 
-    this.state = 'idle'          // idle / charging / swinging / settling / over
+    this.state = 'idle' // idle / charging / swinging / settling / over
     this.selected = null
     this.hovered = null
     this.power = 0
@@ -89,7 +94,7 @@ export class Game {
 
     this.hammer.reset()
     this.hammer.aimAt(blocks[0].body.position.y)
-    this.hammer.pivot.position.y = blocks[0].body.position.y + CONFIG.hammer.armLength * Math.sin(-CONFIG.hammer.impactAngle)
+    this.hammer.snapToAim()
 
     this.ui.hideResult()
     this.ui.setRemain(this.remaining)
@@ -97,6 +102,18 @@ export class Game {
     this.ui.setPhase('ブロックを長押し')
 
     for (const p of this.pieces) syncMesh(p)
+  }
+
+  disposeTree(root) {
+    root.traverse((o) => {
+      o.geometry?.dispose?.()
+      const list = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+      for (const m of new Set(list)) {
+        // 雷神の画像はゲーム全体で使い回すので捨てない
+        if (m.map && !this.keepTextures.has(m.map)) m.map.dispose()
+        m.dispose?.()
+      }
+    })
   }
 
   /** 抜けている最中のブロックが、上の段に当たって減速しないようにする。 */
@@ -115,31 +132,55 @@ export class Game {
     return this.blocks.filter((b) => b.state === 'tower').length
   }
 
+  // ------------------------------------------------------------- 入力
+
   bindInput() {
     const toPointer = (e) => {
-      this.pointer.x = (e.clientX / innerWidth) * 2 - 1
-      this.pointer.y = -(e.clientY / innerHeight) * 2 + 1
+      this.pointer.x = (e.clientX / Math.max(1, innerWidth)) * 2 - 1
+      this.pointer.y = -(e.clientY / Math.max(1, innerHeight)) * 2 + 1
     }
 
-    this.canvas.addEventListener('pointermove', (e) => {
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
+
+    this.canvas.addEventListener('pointerdown', (e) => {
       toPointer(e)
+
+      // 右ドラッグはいつでもカメラ。左ドラッグは「ブロックを掴んでいないとき」だけカメラ。
+      // こうしておくと、叩く操作と視点操作がぶつからない。
+      if (e.button === 0 && this.state === 'idle') {
+        this.updateHover()
+        if (this.hovered) {
+          this.select(this.hovered)
+          this.state = 'charging'
+          this.power = 0
+          this.powerDir = 1
+          this.ui.setPhase('離すと叩く')
+          return
+        }
+      }
+      if (e.button !== 0 && e.button !== 2) return
+      this.drag = { x: e.clientX, y: e.clientY }
+      this.canvas.setPointerCapture?.(e.pointerId)
+    })
+
+    addEventListener('pointermove', (e) => {
+      toPointer(e)
+      if (this.drag) {
+        this.orbit.rotate(e.clientX - this.drag.x, e.clientY - this.drag.y)
+        this.drag.x = e.clientX
+        this.drag.y = e.clientY
+        return
+      }
       if (this.state === 'idle') this.updateHover()
     })
 
-    this.canvas.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return
-      toPointer(e)
-      if (this.state !== 'idle') return
-      this.updateHover()
-      if (!this.hovered) return
-      this.select(this.hovered)
-      this.state = 'charging'
-      this.power = 0
-      this.powerDir = 1
-      this.ui.setPhase('離すと叩く')
-    })
-
-    addEventListener('pointerup', () => {
+    addEventListener('pointerup', (e) => {
+      if (this.drag) {
+        this.drag = null
+        this.canvas.releasePointerCapture?.(e.pointerId)
+        if (this.state === 'idle') this.updateHover()
+        return
+      }
       if (this.state !== 'charging') return
       this.state = 'swinging'
       this.ui.setPhase('—')
@@ -148,9 +189,19 @@ export class Game {
       this.hammer.swing(() => this.applyHit(target, power))
     })
 
+    this.canvas.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault()
+        this.orbit.zoom(e.deltaY)
+      },
+      { passive: false }
+    )
+
     this.ui.retry.addEventListener('click', () => this.reset())
     addEventListener('keydown', (e) => {
       if (e.key === 'r' || e.key === 'R') this.reset()
+      if (e.key === 'c' || e.key === 'C') this.orbit.reset()
     })
   }
 
@@ -164,7 +215,7 @@ export class Game {
 
     if (piece !== this.hovered) {
       this.hovered = piece
-      this.canvas.style.cursor = piece ? 'pointer' : 'default'
+      this.canvas.style.cursor = piece ? 'pointer' : 'grab'
       this.refreshHighlights()
     }
   }
@@ -179,14 +230,15 @@ export class Game {
     for (const b of this.blocks) {
       const c =
         b === this.selected ? SELECT_EMISSIVE : b === this.hovered ? HOVER_EMISSIVE : NO_EMISSIVE
-      b.mesh.material.emissive.copy(c)
+      b.sideMat.emissive.copy(c)
+      b.capMat.emissive.copy(c)
     }
   }
 
   clearHighlights() {
     this.hovered = null
     this.selected = null
-    for (const b of this.blocks) b.mesh.material.emissive.copy(NO_EMISSIVE)
+    this.refreshHighlights()
   }
 
   // ------------------------------------------------------------- 叩く処理
@@ -227,35 +279,37 @@ export class Game {
 
     body.applyImpulse(impulse, offset)
 
-    // 上に乗っているもの（ブロック＋雷神）への影響
+    // 上に乗っているもの（ブロック＋雷神）への影響。下から順に並べる。
     const above = [
       ...this.blocks.filter((b) => b.state === 'tower' && b.index > piece.index),
       this.raizin,
     ]
     const excess = band === 'over' ? overhitExcess(power) : 0
 
-    for (const a of above) {
+    for (let k = 0; k < above.length; k++) {
+      const a = above[k]
       const m = a.body.mass
-      const shake = HIT_DIR * H.shakeAbove * excess * m * (0.55 + Math.random() * 0.9)
-      const jitter = H.jitter * (0.4 + power) * m
+      // 叩いた段から遠いほど衝撃は弱まる。これがないと、10段の細長い塔では
+      // 一番上まで同じ強さで揺すられて、まともな一撃でも崩れてしまう。
+      const atten = 1 / (1 + H.shockFalloff * k)
+      const shake = HIT_DIR * H.shakeAbove * excess * m * atten * (0.55 + Math.random() * 0.9)
+      const jitter = H.jitter * (0.4 + power) * m * atten
       // 重心より上を押すことで、まっすぐ飛ばずに「傾く／ぐらつく」動きになる。
       // てこの長さは背の高さなり。ブロックに雷神と同じ高さで加えると簡単に崩れてしまう。
       const lever = a.kind === 'raizin' ? H.shakeHeight : CONFIG.block.height * 0.3
-      const at = new CANNON.Vec3(0, lever * (0.3 + Math.random() * 0.7), 0)
       a.body.applyImpulse(
         new CANNON.Vec3(
           shake + (Math.random() - 0.5) * jitter,
           0,
           (Math.random() - 0.5) * jitter * 0.8
         ),
-        at
+        new CANNON.Vec3(0, lever * (0.3 + Math.random() * 0.7), 0)
       )
     }
 
     this.state = 'settling'
     this.settleTimer = 0
     this.quietTimer = 0
-    this.lastBand = band
   }
 
   // ------------------------------------------------------------- 毎フレーム
@@ -293,6 +347,7 @@ export class Game {
     this.updatePieceStates()
 
     for (const p of this.pieces) syncMesh(p)
+    this.raizin.view.update(this.camera, this.raizin.mesh)
 
     if (this.state === 'settling') this.updateSettling(dt)
 
@@ -304,7 +359,7 @@ export class Game {
     for (const b of this.blocks) {
       if (b.state !== 'tower') {
         // 遠くへ行ったものは片付ける
-        if (b.state === 'out' && !b.despawned) {
+        if (!b.despawned) {
           const pos = b.body.position
           if (Math.abs(pos.x) > R.despawnDistance || pos.y < -12) {
             b.despawned = true
@@ -315,7 +370,11 @@ export class Game {
         continue
       }
       const pos = b.body.position
-      if (Math.abs(pos.x) > R.clearOutDistance || Math.abs(pos.z) > R.clearOutDistance || pos.y < -1) {
+      if (
+        Math.abs(pos.x) > R.clearOutDistance ||
+        Math.abs(pos.z) > R.clearOutDistance ||
+        pos.y < -1
+      ) {
         b.state = 'out'
         if (!b.wasHit) this.strayCount++
         this.ui.setRemain(this.remaining)
@@ -329,7 +388,9 @@ export class Game {
 
     const watched = [...this.blocks.filter((b) => b.state === 'tower'), this.raizin]
     const moving = watched.some(
-      (p) => p.body.velocity.length() > R.settleSpeed || p.body.angularVelocity.length() > R.settleSpeed * 2
+      (p) =>
+        p.body.velocity.length() > R.settleSpeed ||
+        p.body.angularVelocity.length() > R.settleSpeed * 2
     )
 
     this.quietTimer = moving ? 0 : this.quietTimer + dt
