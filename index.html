@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RAIZIN DROP TOWER</title>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="ui">
+    <div id="hud">
+      <div class="chip" id="remain">のこり 5</div>
+      <div class="chip" id="phase">ブロックを長押し</div>
+    </div>
+
+    <div id="title-tag">RAIZIN DROP TOWER <span>prototype</span></div>
+
+    <div id="gauge-wrap">
+      <div id="gauge-label">POWER</div>
+      <div id="gauge">
+        <div id="gauge-zone-good"></div>
+        <div id="gauge-fill"></div>
+        <div id="gauge-mark-lo" class="gauge-mark"></div>
+        <div id="gauge-mark-hi" class="gauge-mark"></div>
+      </div>
+      <div id="gauge-pct">0%</div>
+    </div>
+
+    <div id="hint">ブロックを左クリックで長押し → パワーゲージが溜まる → 離すとハンマーが叩く</div>
+
+    <div id="result">
+      <div class="result-panel">
+        <h1 id="result-title">GAME OVER</h1>
+        <p id="result-sub"></p>
+        <button id="retry">もう一度</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
