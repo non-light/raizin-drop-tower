@@ -16,6 +16,7 @@ import { Missions } from './missions.js'
 import { Achievements } from './achievements.js'
 import { pickTitle } from './titles.js'
 import { Triggers } from './triggers.js'
+import { Hazards } from './hazards.js'
 import { UI } from './ui.js'
 
 const HOVER_EMISSIVE = new THREE.Color(0x3a2205)
@@ -47,6 +48,16 @@ const LINES = {
   clear: ['やった！', 'よし！', '成功！', 'いい一撃！'],
   clearMissions: ['完璧！', '全部できた！', 'やるね！'],
   clearGolden: ['金ぴか！', 'すごい！', '黄金だ！'],
+}
+
+// 妨害が始まったときのひとこと
+const HAZARD_LINES = {
+  darkcloud: ['見えなくても……いける？', 'くもった…'],
+  onechance: ['いっぱつ。'],
+  moving: ['まと が うごく…'],
+  blackout: ['まっくら！'],
+  feint: ['ゆさぶってくるぞ'],
+  any: ['なにか くる'],
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
@@ -100,6 +111,7 @@ export class Game {
     this.wind = new Wind(this.scene)
     this.lightning = new Lightning(this.scene)
     this.triggers = new Triggers(this.scene)
+    this.hazards = new Hazards()
     this.prevMissionIds = []
     // 実績はプレイをまたいで残る
     this.achievements = new Achievements()
@@ -336,6 +348,7 @@ export class Game {
           this.state = 'charging'
           this.power = 0
           this.powerDir = 1
+          this.startHazards(this.hovered)
           this.ui.setPhase('離すと叩く')
           return
         }
@@ -363,14 +376,7 @@ export class Game {
         if (this.state === 'idle') this.updateHover()
         return
       }
-      if (this.state !== 'charging') return
-      this.state = 'swinging'
-      this.ui.setPhase('—')
-      const power = this.power
-      const target = this.selected
-      // 離した瞬間の向きで確定させる。振っている最中に向きは変わらない。
-      const dir = this.hitDirection(target).clone()
-      this.hammer.swing(() => this.applyHit(target, power, dir))
+      this.releaseCharge()
     })
 
     this.canvas.addEventListener(
@@ -546,7 +552,9 @@ export class Game {
     const type = piece.type
     // 「ちょうどいい」の位置はブロックの種類ごとに違い、段が進むほど狭くなる。
     // GOOD と PERFECT は同じように抜けるので、クリアに PERFECT は要らない。
-    const judge = this.judgeOf(power, piece)
+    // 一発勝負で間に合わなかったときは、弱い打撃として扱う
+    const judge = this.oneChanceMissed ? 'weak' : this.judgeOf(power, piece)
+    this.oneChanceMissed = false
     const band = judge === 'perfect' ? 'good' : judge
     // 斜めへ抜けるときは移動距離が伸びるので、抜けきるまでの時間が
     // どの向きでも同じになるように速度を上げる。
@@ -686,6 +694,52 @@ export class Game {
     return Math.max(-limit, Math.min(limit, lateral)) * k
   }
 
+  /** 溜めを離してハンマーを振る。一発勝負で時間切れになったときもここへ来る。 */
+  releaseCharge() {
+    if (this.state !== 'charging') return
+    this.state = 'swinging'
+    this.ui.setPhase('—')
+    // 離した瞬間に、雲の裏だったかを覚えておく（実績「見えておる」用）
+    this.releasedBlind = this.hazards.hiddenAt(this.power) || this.hazards.blackout
+    this.releasedFast = this.hazards.rateFactor() !== 1
+    this.releasedDark = this.hazards.live('darkcloud')
+    const power = this.power
+    const target = this.selected
+    // 離した瞬間の向きで確定させる。振っている最中に向きは変わらない。
+    const dir = this.hitDirection(target).clone()
+    this.ui.setHazards({ cloud: null, blackout: false, label: '' })
+    this.hammer.swing(() => this.applyHit(target, power, dir))
+  }
+
+  /** 溜めはじめに、今回の妨害を決める。金のコマには妨害を出さない。 */
+  startHazards(piece) {
+    this.hazards.clear()
+    this.ui.setHazards({ cloud: null, blackout: false, label: '' })
+    if (piece.kind === 'gold') return
+    const removed = CONFIG.block.count - this.remaining
+    this.hazards.roll(removed, this.difficulty().t)
+    if (this.hazards.active.length) {
+      this.say(pick(HAZARD_LINES[this.hazards.active[0]] || HAZARD_LINES.any), 1.6)
+    }
+  }
+
+  /** 溜めている間、妨害の見た目と効果を進める。 */
+  updateHazards(dt) {
+    const h = this.hazards
+    if (!h.active.length) return
+    h.update(dt)
+    if (h.consumeFlash()) {
+      this.ui.flashGauge()
+      this.sfx.playCombo(2)
+    }
+    this.ui.setHazards({
+      cloud: h.cloudRange(),
+      blackout: h.blackout,
+      label: h.label,
+      warning: h.announcing,
+    })
+  }
+
   /**
    * いまの難易度。段を抜くほど 0 → 1 へ進み、
    * カーソルが速くなり、判定の帯が狭くなる。
@@ -718,7 +772,11 @@ export class Game {
     const center = (type.weakMax + type.goodMax) / 2
     const half = ((type.goodMax - type.weakMax) / 2) * d.bandScale
     const pHalf = half * d.perfectRatio
-    return { lo: center - half, hi: center + half, pLo: center - pHalf, pHi: center + pHalf }
+    // 移動ゾーンのときは PERFECT の芯だけがゆっくり左右する。
+    // GOOD の範囲は動かさないので、抜けること自体は変わらない。
+    const shift = this.hazards ? this.hazards.zoneOffset() : 0
+    const pc = Math.min(center + half - pHalf, Math.max(center - half + pHalf, center + shift))
+    return { lo: center - half, hi: center + half, pLo: pc - pHalf, pHi: pc + pHalf }
   }
 
   /** WEAK / GOOD / PERFECT / DANGER のどれか。 */
@@ -748,10 +806,11 @@ export class Game {
 
     if (this.state === 'charging') {
       const d = this.difficulty()
+      this.updateHazards(dt)
       // 完全な一定往復だとリズムだけで取れてしまうので、
       // 終盤ほど、見て反応できる程度のゆらぎを混ぜる。
       const wob = 1 + d.wobble * Math.sin(this.time * CONFIG.hit.difficulty.wobbleSpeed)
-      const rate = (1 / d.cycle) * wob
+      const rate = (1 / d.cycle) * wob * this.hazards.rateFactor()
       this.power += this.powerDir * rate * dt
       if (this.power >= 1) {
         this.power = 1
@@ -761,6 +820,12 @@ export class Game {
         this.powerDir = 1
       }
       this.ui.setPower(this.power, true)
+      if (this.selected) this.ui.setZone(this.bandOf(this.selected))
+      // 一発勝負。1往復のうちに離さなければ、弱い打撃として決着する。
+      if (this.hazards.expired(this.difficulty().cycle)) {
+        this.oneChanceMissed = true
+        this.releaseCharge()
+      }
     } else if (this.state === 'idle') {
       this.ui.setPower(0, false)
     }
@@ -1020,6 +1085,9 @@ export class Game {
       const st = this.missions.stats
       st.maxCombo = Math.max(st.maxCombo, this.combo)
       if (this.hitInStrongWind) st.windPerfects++
+      if (this.releasedDark) st.darkPerfects++
+      if (this.releasedBlind) st.blindPerfects++
+      if (this.releasedFast) st.fastPerfects++
       if (golden) {
         st.goldenPerfects++
         // ごほうびは「次の1回だけコンボが切れない」。増えすぎないよう1で頭打ち。

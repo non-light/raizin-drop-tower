@@ -19,6 +19,7 @@ export const TITLES = [
     mark: '✦',
     test: (s) => s.missionsDone >= s.missionsTotal && s.dangers === 0,
   },
+  { id: 'mindseye', name: '心眼', mark: '✦', test: (s) => s.darkPerfects >= 3 },
   { id: 'windmaster', name: '風を制する者', mark: '✦', test: (s) => s.windPerfects > 0 },
   { id: 'combo', name: '連撃の鬼', mark: '✦', test: (s) => s.maxCombo >= 5 },
   {

@@ -9,6 +9,10 @@ export class UI {
     this.pct = document.getElementById('gauge-pct')
     this.zone = document.getElementById('gauge-zone-good')
     this.zonePerfect = document.getElementById('gauge-zone-perfect')
+    this.cloud = document.getElementById('gauge-cloud')
+    this.black = document.getElementById('gauge-black')
+    this.gaugeFlash = document.getElementById('gauge-flash')
+    this.hazardTag = document.getElementById('hazard-tag')
     this.markLo = document.getElementById('gauge-mark-lo')
     this.markHi = document.getElementById('gauge-mark-hi')
     this.remain = document.getElementById('remain')
@@ -270,6 +274,32 @@ export class UI {
   setBlockType(type, key) {
     this.blockType.textContent = type ? type.label : '—'
     this.blockType.className = 'chip type-chip' + (key ? ' ' + key : '')
+  }
+
+  // ---- タイミングバーの妨害 ----
+  /** @param h { cloud:[lo,hi]|null, blackout:bool, label:string, warning:bool } */
+  setHazards(h) {
+    if (h.cloud) {
+      this.cloud.classList.add('show')
+      this.cloud.style.left = `${h.cloud[0] * 100}%`
+      this.cloud.style.width = `${(h.cloud[1] - h.cloud[0]) * 100}%`
+    } else {
+      this.cloud.classList.remove('show')
+    }
+    this.black.classList.toggle('show', !!h.blackout)
+    if (h.label) {
+      this.hazardTag.textContent = h.label
+      this.hazardTag.className = 'show' + (h.warning ? ' warn' : '')
+    } else {
+      this.hazardTag.className = ''
+    }
+  }
+
+  /** フェイントの予兆。速さが変わる直前に一瞬光らせる。 */
+  flashGauge() {
+    this.gaugeFlash.className = ''
+    void this.gaugeFlash.offsetWidth
+    this.gaugeFlash.className = 'show'
   }
 
   setPower(p, charging) {

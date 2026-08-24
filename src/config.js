@@ -99,6 +99,31 @@ export const CONFIG = {
     weakMax: 0.30,         // 種類ごとの値がないときの既定
     goodMax: 0.72,
 
+    // タイミングバーの妨害。段を抜くほど種類が解禁され、起きる確率も上がる。
+    // どれも「見て、覚えて、予測すれば取れる」範囲に収めてある。
+    // 予告を必ず先に出し、同時に起きるのは最大2種類まで。
+    hazards: {
+      enabled: true,
+      announce: 0.7,        // 予告を出してから実際に効きはじめるまでの秒数
+      chance: { start: 0.0, end: 0.8 }, // 1回の溜めで何か起きる確率
+      doubleFrom: 7,        // 抜いた段がこれ以上なら2種同時もありえる
+      unlock: {             // 抜いた段がこの数に達すると解禁
+        darkcloud: 3,
+        onechance: 4,
+        moving: 6,
+        blackout: 6,
+        feint: 8,
+      },
+      // 暗雲：バーの一部が隠れる。カーソルの速さは変えない。
+      darkcloud: { width: { start: 0.22, end: 0.38 } },
+      // 移動ゾーン：PERFECT の芯がゆっくり左右する。カーソルよりずっと遅い。
+      moving: { speed: 0.55, range: 0.13 },
+      // 停電：バー全体が一瞬だけ見えなくなる。
+      blackout: { interval: 1.15, duration: { start: 0.30, end: 0.55 } },
+      // フェイント：速さが変わる。必ず予兆を出してから。
+      feint: { telegraph: 0.35, interval: 1.2, slow: 0.62, fast: 1.45 },
+    },
+
     // 難易度カーブ。段を抜くほど start → end へ寄っていく。
     // ステージ（神社・屋上…）では変わらない。1プレイの中で少しずつ効いてくる。
     //

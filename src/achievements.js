@@ -40,6 +40,20 @@ export const ACHIEVEMENTS = [
     hint: '荒れているときこそ、腕の見せどころ',
     test: (s) => s.windPerfects > 0,
   },
+  {
+    id: 'blindshot',
+    name: '見えておる',
+    mark: '⚡',
+    hint: '見えていなくても、そこにあると分かるときがある',
+    test: (s) => s.blindPerfects > 0,
+  },
+  {
+    id: 'fasterthan',
+    name: '雷神より速く',
+    mark: '⚡',
+    hint: '揺さぶられても、崩れない',
+    test: (s) => s.fastPerfects > 0,
+  },
   { id: 'combo5', name: '五連撃', mark: '✦', hint: '続けて決めるほど良いことがある', test: (s) => s.maxCombo >= 5 },
   { id: 'combo10', name: '十連撃', mark: '⚡', hint: 'ずっと決め続けられたら…？', test: (s) => s.maxCombo >= 10 },
   {

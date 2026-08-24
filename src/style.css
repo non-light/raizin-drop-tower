@@ -933,3 +933,76 @@ html, body {
   color: #eef2ff;
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
 }
+
+/* --- タイミングバーの妨害 --- */
+/* 雲。カーソル（フィルの先端）がこの下に入ると見えなくなる。 */
+#gauge-cloud {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  z-index: 6;
+  display: none;
+  border-radius: 3px;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(70, 76, 96, 0.98), rgba(28, 32, 46, 0.99) 70%),
+    linear-gradient(90deg, rgba(28, 32, 46, 0.8), rgba(28, 32, 46, 1) 18%, rgba(28, 32, 46, 1) 82%, rgba(28, 32, 46, 0.8));
+  box-shadow: 0 0 10px rgba(20, 24, 38, 0.9);
+}
+
+#gauge-cloud.show { display: block; }
+
+/* 停電。バー全体が一瞬だけ見えなくなる。 */
+#gauge-black {
+  position: absolute;
+  inset: -2px;
+  z-index: 7;
+  display: none;
+  border-radius: 3px;
+  background: #0b0e18;
+}
+
+#gauge-black.show { display: block; }
+
+/* フェイントの予兆。速さが変わる直前に一瞬光る。 */
+#gauge-flash {
+  position: absolute;
+  inset: -3px;
+  z-index: 8;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(190, 225, 255, 0.75);
+}
+
+#gauge-flash.show { animation: gFlash 0.35s ease-out forwards; }
+
+@keyframes gFlash {
+  0% { opacity: 0.75; }
+  100% { opacity: 0; }
+}
+
+/* 妨害の予告と、進行中の表示 */
+#hazard-tag {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  opacity: 0;
+  border: 1px solid rgba(180, 200, 255, 0.5);
+  background: rgba(14, 18, 32, 0.9);
+  color: #cfe2ff;
+}
+
+#hazard-tag.show { opacity: 1; }
+#hazard-tag.warn { animation: hzPulse 0.45s ease-in-out infinite; border-color: rgba(255, 216, 94, 0.8); color: #ffe680; }
+
+@keyframes hzPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}

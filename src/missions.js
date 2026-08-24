@@ -61,6 +61,9 @@ export function newStats() {
     doorOpened: 0,
     goldenPerfects: 0,
     windPerfects: 0, // 強い風の最中に決めた PERFECT
+    darkPerfects: 0, // 暗雲のあいだに決めた PERFECT
+    blindPerfects: 0, // カーソルが完全に見えない状態で決めた PERFECT
+    fastPerfects: 0, // フェイントで速さが変わっている最中に決めた PERFECT
     cleared: false,
     missionsDone: 0,
     missionsTotal: 0,
