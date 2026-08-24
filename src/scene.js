@@ -1,6 +1,25 @@
 import * as THREE from 'three'
 import { CONFIG } from './config.js'
 
+/** ステージの色と光を反映する。中身（床・台）は使い回す。 */
+export function applyStage(ctx, stage) {
+  const { scene, floor, dais, hemi, key, fill } = ctx
+  scene.background.setHex(stage.sky)
+  scene.fog.color.setHex(stage.sky)
+  scene.fog.near = stage.fogNear
+  scene.fog.far = stage.fogFar
+  floor.material.color.setHex(stage.floor)
+  dais.material.color.setHex(stage.dais)
+  const L = stage.light
+  hemi.color.setHex(L.sky)
+  hemi.groundColor.setHex(L.ground)
+  hemi.intensity = L.hemi
+  key.color.setHex(L.key)
+  key.intensity = L.keyI
+  fill.color.setHex(L.fill)
+  fill.intensity = L.fillI
+}
+
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
@@ -12,7 +31,8 @@ export function createScene(canvas) {
   scene.background = new THREE.Color(0x1a2030)
   scene.fog = new THREE.Fog(0x1a2030, 34, 78)
 
-  scene.add(new THREE.HemisphereLight(0xbcd2ff, 0x2a2016, 0.7))
+  const hemi = new THREE.HemisphereLight(0xbcd2ff, 0x2a2016, 0.7)
+  scene.add(hemi)
 
   // 主光源は真横から回り込まない位置に置く。360度から見るので、
   // どの向きから見てもブロックの段差が読めるように少し高めにしている。
@@ -55,5 +75,5 @@ export function createScene(canvas) {
   dais.receiveShadow = true
   scene.add(dais)
 
-  return { renderer, scene }
+  return { renderer, scene, floor, dais, hemi, key, fill }
 }

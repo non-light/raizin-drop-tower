@@ -656,7 +656,8 @@ html, body {
   justify-content: center;
 }
 
-#open-ach {
+#open-ach,
+#open-stage {
   pointer-events: auto;
   font: inherit;
   font-size: 13px;
@@ -669,7 +670,8 @@ html, body {
   cursor: pointer;
 }
 
-#open-ach:hover { background: rgba(60, 76, 116, 0.5); }
+#open-ach:hover,
+#open-stage:hover { background: rgba(60, 76, 116, 0.5); }
 
 /* --- 実績一覧 --- */
 #ach-panel {
@@ -792,3 +794,107 @@ html, body {
 
 /* GOLD BLOCK の判定表示 */
 #judge.goldfail { color: #d8b46a; font-size: 34px; }
+
+/* --- ステージ選択 --- */
+#stage-select {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 22, 0.82);
+  backdrop-filter: blur(5px);
+}
+
+#stage-select.show { display: flex; pointer-events: auto; }
+
+.ss-inner {
+  width: min(720px, 92vw);
+  text-align: center;
+}
+
+.ss-inner h1 {
+  margin: 0 0 20px;
+  font-size: 17px;
+  letter-spacing: 0.34em;
+  color: rgba(214, 226, 255, 0.9);
+}
+
+#stage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.stage-card {
+  pointer-events: auto;
+  font: inherit;
+  text-align: left;
+  padding: 16px 16px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(150, 180, 255, 0.28);
+  background: rgba(18, 24, 42, 0.9);
+  color: #eef2ff;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+
+.stage-card:hover { border-color: rgba(255, 216, 94, 0.7); transform: translateY(-2px); }
+.stage-card.current { border-color: rgba(255, 216, 94, 0.55); background: rgba(38, 34, 18, 0.85); }
+
+.stage-card .sc-swatch {
+  height: 46px;
+  border-radius: 7px;
+  margin-bottom: 10px;
+}
+
+.stage-card .sc-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+
+.stage-card .sc-ja { font-size: 12px; color: rgba(200, 214, 245, 0.8); }
+.stage-card .sc-blurb { margin-top: 5px; font-size: 11px; color: rgba(170, 186, 220, 0.7); }
+.stage-card .sc-last {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(255, 216, 94, 0.85);
+}
+
+/* --- ステージ名の表示 --- */
+#stage-banner {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+#stage-banner.show { animation: sbIn 2.2s ease-out forwards; }
+
+@keyframes sbIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) translateY(10px); }
+  14% { opacity: 1; transform: translate(-50%, -50%) translateY(0); }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+#stage-banner .sb-no {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: rgba(190, 205, 240, 0.8);
+}
+
+#stage-banner .sb-name {
+  margin-top: 4px;
+  font-size: clamp(26px, 5vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #eef2ff;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
+}

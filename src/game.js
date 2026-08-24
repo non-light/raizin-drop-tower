@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { CONFIG } from './config.js'
-import { createScene } from './scene.js'
+import { createScene, applyStage } from './scene.js'
+import { STAGES, getStage, buildScenery } from './stages.js'
 import { OrbitCam } from './orbitcam.js'
 import { createWorld } from './physics.js'
 import { buildTower, syncMesh, tiltDegrees } from './tower.js'
@@ -48,11 +49,40 @@ const LINES = {
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
 
+/**
+ * ブロックが物理的に何かへ触れはじめる距離。
+ * 見た目は円柱だが当たり判定は箱なので、対角では半径の√2倍まで届く。
+ * トリガーはこの距離に合わせておかないと、物理では当たって弾かれているのに
+ * イベントだけ鳴らない、ということが起きる。
+ */
+function blockReach() {
+  const B = CONFIG.block
+  const base = B.shape === 'box' ? B.radius * B.shapeScale * Math.SQRT2 : B.radius
+  return base + CONFIG.triggers.blockRadiusPad
+}
+
+const STAGE_KEY = 'raizin-drop-tower/stage'
+const loadStage = () => {
+  try {
+    return localStorage.getItem(STAGE_KEY) || 'shrine'
+  } catch {
+    return 'shrine'
+  }
+}
+const saveStage = (id) => {
+  try {
+    localStorage.setItem(STAGE_KEY, id)
+  } catch {
+    // 保存できなくても遊べなくはしない
+  }
+}
+
 export class Game {
   constructor(canvas, sprites) {
-    const { renderer, scene } = createScene(canvas)
-    this.renderer = renderer
-    this.scene = scene
+    const sceneCtx = createScene(canvas)
+    this.sceneCtx = sceneCtx
+    this.renderer = sceneCtx.renderer
+    this.scene = sceneCtx.scene
     this.canvas = canvas
     this.sprites = sprites
     this.keepTextures = new Set(Object.values(sprites))
@@ -63,10 +93,10 @@ export class Game {
     this.cfg = CONFIG
     this.ui = new UI()
     this.sfx = new Sfx()
-    this.hammer = new Hammer(scene)
-    this.wind = new Wind(scene)
-    this.lightning = new Lightning(scene)
-    this.triggers = new Triggers(scene)
+    this.hammer = new Hammer(this.scene)
+    this.wind = new Wind(this.scene)
+    this.lightning = new Lightning(this.scene)
+    this.triggers = new Triggers(this.scene)
     this.prevMissionIds = []
     // 実績はプレイをまたいで残る
     this.achievements = new Achievements()
@@ -86,7 +116,9 @@ export class Game {
 
     this.timeScale = 1
     this.finale = null
+    this.stage = getStage(loadStage())
 
+    this.applyStageLook()
     this.reset()
     this.bindInput()
 
@@ -101,6 +133,35 @@ export class Game {
    * innerWidth だけを見ていると、レイアウトが決まる前に呼ばれたときに
    * 小さいまま固定されてしまうので、キャンバスの実寸を優先して読む。
    */
+  /** 選んだステージの色・光・飾りを反映する。飾りは選んだぶんだけ作る。 */
+  applyStageLook() {
+    applyStage(this.sceneCtx, this.stage)
+    this.scenery?.traverse((o) => {
+      o.geometry?.dispose?.()
+      const list = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
+      for (const m of new Set(list)) m.dispose?.()
+    })
+    if (this.scenery) this.scene.remove(this.scenery)
+    this.scenery = buildScenery(this.scene, this.stage)
+    this.sfx.setAmbience(this.stage.ambience)
+  }
+
+  /** ステージ選択から呼ばれる。RANDOM ならここで抽選する。 */
+  startStage(id) {
+    const chosen = id === 'random' ? STAGES[Math.floor(Math.random() * STAGES.length)] : getStage(id)
+    saveStage(id) // RANDOM を選んだことも覚えておく
+    this.stage = chosen
+    this.applyStageLook()
+    this.reset()
+    this.ui.hideStageSelect()
+    this.ui.showStageBanner(chosen, STAGES.indexOf(chosen))
+    this.sfx.resume()
+  }
+
+  openStageSelect() {
+    this.ui.renderStages(loadStage(), (id) => this.startStage(id))
+  }
+
   resize() {
     const w = Math.max(1, this.canvas.clientWidth || innerWidth || 1)
     const h = Math.max(1, this.canvas.clientHeight || innerHeight || 1)
@@ -140,12 +201,14 @@ export class Game {
     this.raizin = raizin
     this.pieces = [...blocks, raizin]
 
-    this.props = new Props({ scene: this.scene, world, mats, sfx: this.sfx })
+    const theme = this.stage.theme
+    this.props = new Props({ scene: this.scene, world, mats, sfx: this.sfx, theme })
     this.bonus = new Bonus({
       scene: this.scene,
       world,
       mats,
       sfx: this.sfx,
+      theme,
       onDoorOpen: () => this.onDoorOpen(),
       onGoldReady: () => this.onGoldReady(),
     })
@@ -317,6 +380,10 @@ export class Game {
     )
 
     this.ui.retry.addEventListener('click', () => this.reset())
+    this.ui.stageBtn?.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.openStageSelect()
+    })
     this.ui.openAch.addEventListener('click', (e) => {
       e.stopPropagation()
       this.ui.renderAchievements(this.achievements)
@@ -642,8 +709,13 @@ export class Game {
     }
 
     // 待機中のハンマーはカメラ側に付いてくる。振っている間は固定される。
-    if (!this.hammer.busy) {
-      this.aimHammer(this.selected || this.lowestBlock())
+    //
+    // 狙いを更新するのは「これから叩ける」状態のときだけ。
+    // 叩いたあとも狙い続けると、いま吹っ飛んでいったコマをハンマーが
+    // 追いかけて、そのまま画面の外まで飛んでいってしまう。
+    if (!this.hammer.busy && (this.state === 'idle' || this.state === 'charging')) {
+      const target = this.selected?.state === 'tower' ? this.selected : this.lowestBlock()
+      this.aimHammer(target)
     }
     this.hammer.update(dt)
 
@@ -779,7 +851,7 @@ export class Game {
    * どれだけ速くても、どの向きから来ても抜けない。
    */
   updateTriggers() {
-    const r = CONFIG.triggers.blockRadius
+    const r = blockReach()
     const hh = CONFIG.triggers.blockHalfHeight
     const movers = []
     for (const b of this.blocks) {

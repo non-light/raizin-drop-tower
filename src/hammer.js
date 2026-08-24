@@ -62,6 +62,8 @@ export class Hammer {
     this.swingT = -1
     this.impactFired = false
     this.onImpact = null
+    // 当たった手応え。物理の反作用ではなく、見た目だけの小さな揺れ。
+    this.recoilT = -1
 
     this.apply()
   }
@@ -125,6 +127,7 @@ export class Hammer {
         if (!this.impactFired) {
           this.impactFired = true
           this.angle = 0
+          this.recoilT = 0
           this.onImpact?.()
         }
         // 振り抜き。仰角がマイナスになるぶん、ヘッドはブロックから離れて下へ抜ける。
@@ -140,11 +143,24 @@ export class Hammer {
       }
     }
 
+    if (this.recoilT >= 0) {
+      this.recoilT += dt
+      if (this.recoilT >= H.recoilTime) this.recoilT = -1
+    }
+
     this.apply()
   }
 
   apply() {
     this.pivot.position.copy(this.pos)
+    if (this.recoilT >= 0) {
+      // 手元側へ小さく戻して、すぐ収まる。減衰する揺れ。
+      const H = this.cfg
+      const k = this.recoilT / H.recoilTime
+      const amp = H.recoil * (1 - k) * Math.cos(k * Math.PI * 3)
+      this.pivot.position.x -= Math.cos(this.yaw) * amp
+      this.pivot.position.z += Math.sin(this.yaw) * amp
+    }
     // Euler の 'XYZ' は Z → Y の順に効くので、
     // 「腕を持ち上げてから、その向きへ回す」という意図どおりになる。
     this.pivot.rotation.set(0, this.yaw, this.angle)
@@ -153,6 +169,7 @@ export class Hammer {
   reset() {
     this.swingT = -1
     this.impactFired = false
+    this.recoilT = -1
     this.angle = this.cfg.restAngle
     this.apply()
   }

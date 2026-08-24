@@ -4,13 +4,18 @@ import { CONFIG } from './config.js'
 import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
 import { placeStatic } from './physics.js'
 
+const BELL_COLOR = { shrine: 0xb59a4e, alarm: 0xc94a3d, plate: 0x9aa3ad, arcade: 0xffd23d }
+const FRAME_TINT = { shrine: [126, 88, 52], alarm: [110, 116, 126], plate: [96, 102, 112], arcade: [150, 90, 170] }
+const CRATE_TINT = { wood: [150, 108, 66], toolbox: [96, 110, 128], drum: [140, 92, 62], electronics: [92, 96, 130] }
+
 /**
  * 塔のまわりに置く、飛んだブロックが当たると反応するもの。
  * クリアには一切関係しない遊び要素。
  * 360度カメラで回しても塔を隠さないよう、塔から十分に離して低く置いている。
  */
 export class Props {
-  constructor({ scene, world, mats, sfx }) {
+  constructor({ scene, world, mats, sfx, theme }) {
+    this.theme = theme
     this.scene = scene
     this.world = world
     this.sfx = sfx
@@ -40,16 +45,19 @@ export class Props {
     return { mesh, body }
   }
 
-  // ---- 鐘 ----
+  // ---- 鐘にあたるもの（ステージで見た目が変わるだけで、中身は共通） ----
   addBell(mats) {
-    const [x, , z] = CONFIG.props.bell.at
+    const [x, , z] = this.theme.bell.at
     const s = CONFIG.props.bell.scale
+    const style = this.theme.bell.style
     const group = new THREE.Group()
     group.position.set(x, 0, z)
 
+    const frameTint = FRAME_TINT[style] ?? [126, 88, 52]
     const woodMat = new THREE.MeshStandardMaterial({
-      map: makeWoodSideTexture(31, [126, 88, 52], false),
-      roughness: 0.8,
+      map: makeWoodSideTexture(31, frameTint, false),
+      roughness: style === 'shrine' ? 0.8 : 0.45,
+      metalness: style === 'shrine' ? 0 : 0.6,
     })
     const post = new THREE.BoxGeometry(0.22 * s, 3.0 * s, 0.22 * s)
     for (const px of [-1.1 * s, 1.1 * s]) {
@@ -68,24 +76,48 @@ export class Props {
     pivot.position.y = 3.0 * s
     group.add(pivot)
 
-    const bell = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.52 * s, 0.78 * s, 1.5 * s, 24, 1, true),
-      new THREE.MeshStandardMaterial({
-        color: 0xb59a4e,
-        roughness: 0.35,
-        metalness: 0.85,
-        side: THREE.DoubleSide,
-      })
-    )
-    bell.position.y = -0.95 * s
-    bell.castShadow = true
-    pivot.add(bell)
-    const cap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.52 * s, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
-      bell.material
-    )
-    cap.position.y = -0.2 * s
-    pivot.add(cap)
+    const metal = new THREE.MeshStandardMaterial({
+      color: BELL_COLOR[style] ?? 0xb59a4e,
+      roughness: 0.35,
+      metalness: 0.85,
+      side: THREE.DoubleSide,
+    })
+
+    if (style === 'plate') {
+      // 工場：吊り下げられた金属板
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.5 * s, 1.5 * s, 0.12 * s), metal)
+      plate.position.y = -0.95 * s
+      plate.castShadow = true
+      pivot.add(plate)
+    } else if (style === 'alarm' || style === 'arcade') {
+      // 屋上：非常ベル / 秋葉原：当たりベル。どちらも半球型。
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.74 * s, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+        metal
+      )
+      dome.rotation.x = Math.PI
+      dome.position.y = -0.7 * s
+      dome.castShadow = true
+      pivot.add(dome)
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.16 * s, 10, 8), metal)
+      knob.position.y = -1.5 * s
+      pivot.add(knob)
+    } else {
+      // 神社：釣鐘
+      const bell = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.52 * s, 0.78 * s, 1.5 * s, 24, 1, true),
+        metal
+      )
+      bell.position.y = -0.95 * s
+      bell.castShadow = true
+      pivot.add(bell)
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.52 * s, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+        metal
+      )
+      cap.position.y = -0.2 * s
+      pivot.add(cap)
+    }
 
     this.scene.add(group)
 
@@ -124,9 +156,13 @@ export class Props {
 
   // ---- 空き缶 ----
   addCans(mats) {
-    const C = CONFIG.props.cans
+    const C = { ...CONFIG.props.cans, ...this.theme.cans }
     const [x, , z] = C.at
-    const mat = new THREE.MeshStandardMaterial({ color: 0xa9b3bd, roughness: 0.42, metalness: 0.72 })
+    const mat = new THREE.MeshStandardMaterial({
+      color: C.color ?? 0xa9b3bd,
+      roughness: 0.42,
+      metalness: 0.72,
+    })
     const geo = new THREE.CylinderGeometry(0.19, 0.19, 0.52, 16)
 
     for (let i = 0; i < C.count; i++) {
@@ -154,19 +190,26 @@ export class Props {
 
   // ---- 木箱 ----
   addCrates(mats) {
-    for (const c of CONFIG.props.crates) {
-      const [x, , z] = c.at
+    const style = this.theme.crateStyle
+    for (const at of this.theme.crates) {
+      const [x, , z] = at
+      const tint = CRATE_TINT[style] ?? [150, 108, 66]
+      const shiny = style === 'drum' || style === 'electronics'
       const side = new THREE.MeshStandardMaterial({
-        map: makeWoodSideTexture(Math.round(70 + x * 5), [150, 108, 66], false),
-        roughness: 0.85,
+        map: makeWoodSideTexture(Math.round(70 + x * 5), tint, false),
+        roughness: shiny ? 0.4 : 0.85,
+        metalness: shiny ? 0.55 : 0,
       })
       const cap = new THREE.MeshStandardMaterial({
-        map: makeWoodCapTexture(Math.round(70 + z * 5), [132, 94, 58]),
-        roughness: 0.85,
+        map: makeWoodCapTexture(Math.round(70 + z * 5), tint.map((v) => Math.round(v * 0.88))),
+        roughness: shiny ? 0.4 : 0.85,
+        metalness: shiny ? 0.55 : 0,
       })
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), [
-        side, side, cap, cap, side, side,
-      ])
+      // ドラム缶だけ円柱。それ以外は箱。当たり判定は共通の箱のまま。
+      const mesh =
+        style === 'drum'
+          ? new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.1, 18), [side, cap, cap])
+          : new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), [side, side, cap, cap, side, side])
       mesh.castShadow = true
       mesh.receiveShadow = true
 

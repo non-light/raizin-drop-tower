@@ -1,5 +1,6 @@
 import { CONFIG } from './config.js'
 import { ACHIEVEMENTS } from './achievements.js'
+import { STAGES } from './stages.js'
 
 export class UI {
   constructor() {
@@ -49,7 +50,11 @@ export class UI {
     this.bonusHead = this.bonusTag.querySelector('.bt-head')
     this.bonusSub = this.bonusTag.querySelector('.bt-sub')
     this.bonusArrow = this.bonusTag.querySelector('.bt-arrow')
+    this.stageSelect = document.getElementById('stage-select')
+    this.stageList = document.getElementById('stage-list')
+    this.stageBanner = document.getElementById('stage-banner')
     this.openAch = document.getElementById('open-ach')
+    this.stageBtn = document.getElementById('open-stage')
     this.closeAch = document.getElementById('close-ach')
 
     this.bubbleUntil = 0
@@ -118,6 +123,38 @@ export class UI {
       this.resultStats.append(dt, dd)
     }
     this.titleName.textContent = `${title.mark} ${title.name} ${title.mark}`
+  }
+
+  // ---- ステージ選択 ----
+  renderStages(currentId, onPick) {
+    this.stageList.innerHTML = ''
+    const cards = [...STAGES, { id: 'random', name: 'RANDOM', nameJa: 'おまかせ', blurb: '4つから1つ選ばれる', sky: 0x555a72 }]
+    for (const st of cards) {
+      const b = document.createElement('button')
+      b.className = 'stage-card' + (st.id === currentId ? ' current' : '')
+      const sw = `#${st.sky.toString(16).padStart(6, '0')}`
+      b.innerHTML =
+        `<div class="sc-swatch" style="background:linear-gradient(160deg, ${sw}, rgba(0,0,0,0.5))"></div>` +
+        `<div class="sc-name">${st.name}</div>` +
+        `<div class="sc-ja">${st.nameJa}</div>` +
+        `<div class="sc-blurb">${st.blurb}</div>` +
+        (st.id === currentId ? '<div class="sc-last">前回のステージ</div>' : '')
+      b.addEventListener('click', () => onPick(st.id))
+      this.stageList.appendChild(b)
+    }
+    this.stageSelect.classList.add('show')
+  }
+
+  hideStageSelect() {
+    this.stageSelect.classList.remove('show')
+  }
+
+  showStageBanner(stage, index) {
+    this.stageBanner.querySelector('.sb-no').textContent = `STAGE ${index + 1}`
+    this.stageBanner.querySelector('.sb-name').textContent = `${stage.name} / ${stage.nameJa}`
+    this.stageBanner.className = ''
+    void this.stageBanner.offsetWidth
+    this.stageBanner.className = 'show'
   }
 
   // ---- GOLD BLOCK のボーナス案内 ----

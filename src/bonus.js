@@ -14,6 +14,9 @@ import { blockShape } from './tower.js'
  * 金のブロックを出したまま放っておいてもクリアできる。
  * UI に「鍵を狙え」とは書かない。見つけたときに気づく作りにしてある。
  */
+const DOOR_FRAME = { wood: 0x6b5540, locker: 0x60697a, hatch: 0x4e545e, cabinet: 0x3a2b58 }
+const DOOR_PANEL = { wood: [122, 86, 52], locker: [104, 114, 128], hatch: [92, 98, 108], cabinet: [96, 70, 150] }
+
 /** 金のブロックの当たり判定。通常ブロックと同じ考えかたで作る。 */
 function goldShape(r, h) {
   if (CONFIG.block.shape === 'cylinder') {
@@ -24,7 +27,8 @@ function goldShape(r, h) {
 }
 
 export class Bonus {
-  constructor({ scene, world, mats, sfx, onDoorOpen, onGoldReady }) {
+  constructor({ scene, world, mats, sfx, theme, onDoorOpen, onGoldReady }) {
+    this.theme = theme
     this.scene = scene
     this.world = world
     this.mats = mats
@@ -60,7 +64,7 @@ export class Bonus {
 
   // ---------------------------------------------------------------- 鍵
   buildKey() {
-    const [x, y, z] = CONFIG.bonus.key.at
+    const [x, y, z] = this.theme.key.at
     const group = new THREE.Group()
     group.position.set(x, y, z)
 
@@ -140,13 +144,19 @@ export class Bonus {
   // ---------------------------------------------------------------- 扉
   buildDoor() {
     const D = CONFIG.bonus.door
-    const [x, , z] = D.at
+    const [x, , z] = this.theme.door.at
     const group = new THREE.Group()
     group.position.set(x, 0, z)
     // 塔のほうを向かせる
     group.rotation.y = Math.atan2(-x, -z)
 
-    const stone = new THREE.MeshStandardMaterial({ color: 0x565f74, roughness: 0.95 })
+    const style = this.theme.door.style
+    const frameColor = DOOR_FRAME[style] ?? 0x565f74
+    const stone = new THREE.MeshStandardMaterial({
+      color: frameColor,
+      roughness: style === 'wood' ? 0.95 : 0.45,
+      metalness: style === 'wood' ? 0 : 0.6,
+    })
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry(D.width + 0.5, D.height + 0.4, 0.4),
       stone
@@ -168,11 +178,14 @@ export class Bonus {
     const hinge = new THREE.Group()
     hinge.position.set(-D.width / 2, 0, 0.16)
     group.add(hinge)
+    const panelTint = DOOR_PANEL[style] ?? [122, 86, 52]
     const panel = new THREE.Mesh(
       new THREE.BoxGeometry(D.width, D.height, 0.12),
       new THREE.MeshStandardMaterial({
-        map: makeWoodSideTexture(91, [122, 86, 52], false),
-        roughness: 0.85,
+        map: makeWoodSideTexture(91, panelTint, false),
+        roughness: style === 'wood' ? 0.85 : 0.4,
+        metalness: style === 'wood' ? 0 : 0.55,
+        emissive: style === 'cabinet' ? 0x2a1040 : 0x000000,
       })
     )
     panel.position.set(D.width / 2, D.height / 2, 0)
@@ -186,7 +199,7 @@ export class Bonus {
   // ---------------------------------------------------------------- 金のブロック
   spawnGold() {
     const G = CONFIG.bonus.gold
-    const [x, , z] = G.at
+    const [x, , z] = this.theme.gold.at
     const r = G.radius
     const h = G.height
 
@@ -218,7 +231,7 @@ export class Bonus {
       angularDamping: 0.2,
     })
     // 扉の中から出てきて、台座へ乗る。いきなり現れないようにする。
-    const [dx, , dz] = CONFIG.bonus.door.at
+    const [dx, , dz] = this.theme.door.at
     body.position.set(dx, G.standTop + 0.35, dz)
     body.type = CANNON.Body.KINEMATIC
     body.mass = 0
@@ -302,7 +315,7 @@ export class Bonus {
       this.key.t += dt
       this.key.group.rotation.y += (0.45 + this.key.spin) * dt
       this.key.spin *= Math.pow(0.02, dt)
-      this.key.group.position.y = CONFIG.bonus.key.at[1] + Math.sin(this.key.t * 1.6) * 0.06
+      this.key.group.position.y = this.theme.key.at[1] + Math.sin(this.key.t * 1.6) * 0.06
       if (!this.unlocked) {
         this.key.gold.emissive.setScalar(0.10 + Math.sin(this.key.t * 2.2) * 0.06)
       } else {

@@ -251,6 +251,14 @@ const SOURCES = {
   },
 }
 
+// 環境音の設定。どれも十分に小さい。
+const AMBIENCE = {
+  wind: { type: 'bandpass', freq: 340, q: 0.7, gain: 0.035 },   // 神社：木々のざわめき
+  city: { type: 'lowpass', freq: 260, q: 0.6, gain: 0.045 },    // 屋上：遠くの街
+  machine: { type: 'bandpass', freq: 140, q: 1.6, gain: 0.05 }, // 工場：機械のうなり
+  arcade: { type: 'highpass', freq: 900, q: 0.5, gain: 0.028 }, // 秋葉原：電子的なざわつき
+}
+
 export class Sfx {
   constructor() {
     this.ctx = null
@@ -276,6 +284,8 @@ export class Sfx {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
 
     this.initWind()
+    this.initAmbience()
+    if (this.pendingAmbience) this.setAmbience(this.pendingAmbience)
   }
 
   setVolume(v) {
@@ -357,6 +367,36 @@ export class Sfx {
     const t = this.ctx.currentTime
     this.windGain.gain.setTargetAtTime(target, t, 0.25)
     this.windFilter.frequency.setTargetAtTime(360 + strength * 340, t, 0.3)
+  }
+
+  // ---- ステージの環境音。ハンマー音などを邪魔しないよう、かなり小さくしてある ----
+  initAmbience() {
+    const src = this.ctx.createBufferSource()
+    src.buffer = this.noiseBuffer
+    src.loop = true
+    const f = this.ctx.createBiquadFilter()
+    f.type = 'lowpass'
+    f.frequency.value = 400
+    f.Q.value = 0.7
+    const g = this.ctx.createGain()
+    g.gain.value = 0
+    src.connect(f).connect(g).connect(this.master)
+    src.start()
+    this.ambGain = g
+    this.ambFilter = f
+  }
+
+  setAmbience(kind) {
+    if (!this.ambGain) {
+      this.pendingAmbience = kind
+      return
+    }
+    const preset = AMBIENCE[kind] || AMBIENCE.wind
+    const t = this.ctx.currentTime
+    this.ambFilter.type = preset.type
+    this.ambFilter.frequency.setTargetAtTime(preset.freq, t, 0.4)
+    this.ambFilter.Q.value = preset.q
+    this.ambGain.gain.setTargetAtTime(preset.gain, t, 0.6)
   }
 
   // ---- 呼び出し口。ゲーム側はこの名前しか知らない ----

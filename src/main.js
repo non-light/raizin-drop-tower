@@ -13,6 +13,8 @@ import back from '../assets/raizin_daruma_back.png'
 loadRaizinSprites({ front, left, right, back }).then((sprites) => {
   const game = new Game(document.getElementById('scene'), sprites)
   game.start()
+  // 最初にステージを選んでもらう。裏では前回のステージが組んである。
+  game.openStageSelect()
   // 調整用。ブラウザのコンソールから window.game.cfg でパラメータを触れる
   window.game = game
 })
