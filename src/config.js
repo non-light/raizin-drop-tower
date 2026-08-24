@@ -221,7 +221,8 @@ export const CONFIG = {
     pause: 0.5,            // 着地してからの「間」
     thunderTime: 0.45,     // 雷が出ている時間
     titleDelay: 0.15,      // 雷のあと RAIZIN CLEAR! までの間
-    missionDelay: 1.3,     // RAIZIN CLEAR! のあとミッション結果までの間
+    titleHold: 1.5,        // RAIZIN CLEAR! を大きく見せる時間。このあと余韻タイムへ
+    lineSeconds: 4.2,      // 雷神の一言を出しておく秒数
     shake: 0.1,            // 抜けた瞬間のカメラの揺れ。小さめに
   },
 

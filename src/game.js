@@ -12,6 +12,8 @@ import { Sfx } from './sfx.js'
 import { Bonus } from './bonus.js'
 import { Lightning } from './finale.js'
 import { Missions } from './missions.js'
+import { Achievements } from './achievements.js'
+import { pickTitle } from './titles.js'
 import { Triggers } from './triggers.js'
 import { UI } from './ui.js'
 
@@ -36,6 +38,10 @@ const LINES = {
   wind: ['ふんばる…', 'かぜが…'],
   golden: ['ぬおおっ！', 'これは…！'],
   mission: ['やった！', 'いいね！'],
+  // クリアしたときの一言。達成ぐあいで少しだけ変える。
+  clear: ['やった！', 'よし！', '成功！', 'いい一撃！'],
+  clearMissions: ['完璧！', '全部できた！', 'やるね！'],
+  clearGolden: ['金ぴか！', 'すごい！', '黄金だ！'],
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
@@ -60,6 +66,8 @@ export class Game {
     this.lightning = new Lightning(scene)
     this.triggers = new Triggers(scene)
     this.prevMissionIds = []
+    // 実績はプレイをまたいで残る
+    this.achievements = new Achievements()
     this.raycaster = new THREE.Raycaster()
     this.pointer = new THREE.Vector2()
     this.clock = new THREE.Clock()
@@ -160,6 +168,9 @@ export class Game {
     this.comboGuard = 0
     this.timeScale = 1
     this.finale = null
+    this.cleared = false
+    this.victoryHops = null
+    this.hammer.pivot.visible = true
 
     this.missions = new Missions(this.prevMissionIds)
     this.prevMissionIds = this.missions.ids
@@ -176,6 +187,8 @@ export class Game {
     this.ui.setWind(null)
     this.ui.setGuard(0)
     this.ui.hideFinaleTitle()
+    this.ui.exitAfterglow()
+    this.ui.toggleAchPanel(false)
     this.ui.renderMissions(this.missions)
     this.ui.setMuted(this.sfx.muted)
 
@@ -299,6 +312,19 @@ export class Game {
     )
 
     this.ui.retry.addEventListener('click', () => this.reset())
+    this.ui.openAch.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.ui.renderAchievements(this.achievements)
+      this.ui.toggleAchPanel(true)
+    })
+    this.ui.closeAch.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.ui.toggleAchPanel(false)
+    })
+    this.ui.toResult.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.showFinalResult()
+    })
 
     const toggleSound = () => {
       this.sfx.resume()
@@ -311,6 +337,12 @@ export class Game {
 
     addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase()
+      // 余韻タイムが始まってからだけ受け付ける。演出中の誤入力では飛ばない。
+      if ((e.key === 'Enter' || e.key === ' ') && this.state === 'afterglow') {
+        e.preventDefault()
+        this.showFinalResult()
+        return
+      }
       if (k === 'r') this.reset()
       if (k === 'c') this.orbit.reset()
       if (k === 'm') toggleSound()
@@ -424,6 +456,7 @@ export class Game {
       return
     }
     this.sfx.playHammerHit(power)
+    this.hitInStrongWind = this.wind.blowing && this.wind.label === 'STRONG WIND'
     if (piece.kind === 'gold') return this.applyGoldHit(piece, power, dir)
 
     const H = CONFIG.hit
@@ -438,6 +471,7 @@ export class Game {
       type.speedScale *
       Math.pow(reach, H.diagonalBoost)
 
+    this.hitInStrongWind = this.wind.blowing && this.wind.label === 'STRONG WIND'
     for (const p of this.pieces) p.body.wakeUp()
 
     const body = piece.body
@@ -604,6 +638,7 @@ export class Game {
     }
     this.hammer.update(dt)
 
+    this.updateVictoryHops(realDt)
     this.orbit.updateBob(dt)
     this.wind.update(dt)
     this.updateWindUI()
@@ -672,20 +707,47 @@ export class Game {
     this.colliderDebug = group
   }
 
+  /** 勝利リアクション。時間をおいて2回、ぴょこんと跳ねる。見た目だけ。 */
+  updateVictoryHops(dt) {
+    if (!this.victoryHops) return
+    this.hopTimer = (this.hopTimer || 0) + dt
+    while (this.victoryHops.length && this.hopTimer >= this.victoryHops[0]) {
+      this.victoryHops.shift()
+      this.raizin.view.bounce(0.55)
+    }
+    if (!this.victoryHops.length) {
+      this.victoryHops = null
+      this.hopTimer = 0
+    }
+  }
+
   lowestBlock() {
     return this.blocks.find((b) => b.state === 'tower') || null
   }
 
-  /** 雷神の頭の上を画面座標へ。吹き出しを置くのに使う。 */
+  /**
+   * 雷神の頭の上を画面座標へ。吹き出しは3D空間に置かず、
+   * ここで求めた位置に 2D の HTML を重ねている。
+   *
+   * 頭上の点は雷神のローカル座標ではなく、ワールドの真上で取る。
+   * ローカルで取ると、雷神が傾いたときに吹き出しまで一緒に回り込んで、
+   * 本体の裏へ隠れてしまう。
+   * カメラを360度どこへ回しても、つねに手前に、読める向きで出る。
+   */
   raizinScreenPos() {
-    const g = this.raizin.mesh
-    this.tmpVec.set(0, this.raizin.view.baseY + CONFIG.raizin.height + 0.25, 0)
-    g.localToWorld(this.tmpVec).project(this.camera)
-    if (this.tmpVec.z > 1) return null
+    const p = this.raizin.mesh.position
+    const top = this.raizin.view.baseY + CONFIG.raizin.height + 0.35
+    this.tmpVec.set(p.x, p.y + top, p.z).project(this.camera)
+    if (this.tmpVec.z > 1) return null // カメラの後ろにある
+
     const r = this.canvas.getBoundingClientRect()
+    const x = r.left + (this.tmpVec.x * 0.5 + 0.5) * r.width
+    const y = r.top + (-this.tmpVec.y * 0.5 + 0.5) * r.height
+    // 画面外へはみ出さないように寄せる
+    const mx = 110
     return {
-      x: r.left + (this.tmpVec.x * 0.5 + 0.5) * r.width,
-      y: r.top + (-this.tmpVec.y * 0.5 + 0.5) * r.height,
+      x: Math.min(Math.max(x, r.left + mx), r.right - mx),
+      y: Math.min(Math.max(y, r.top + 56), r.bottom - 70),
     }
   }
 
@@ -776,18 +838,15 @@ export class Game {
       this.combo = 0
       this.state = 'over'
       this.ui.setPhase('—')
-      this.ui.renderMissionResult(this.missions)
-      this.ui.showResult('GAME OVER', fail, false)
+      this.showResultPanel('GAME OVER', fail, false)
       return
     }
 
     if (this.remaining === 0) {
       // 最後の1段を「ちょうどいい」で抜いたときは startFinale 側で処理される。
-      // ここへ来るのは、強すぎて飛んでいった場合など。
-      this.state = 'over'
+      // ここへ来るのは、強すぎて飛んでいった場合など。演出はないが余韻タイムは同じ。
       this.ui.setPhase('—')
-      this.ui.renderMissionResult(this.missions)
-      this.ui.showResult('CLEAR！', '雷神は最後まで倒れなかった', true)
+      this.enterAfterglow('CLEAR！')
       return
     }
 
@@ -811,6 +870,7 @@ export class Game {
       this.sfx.playCombo(this.combo)
       const st = this.missions.stats
       st.maxCombo = Math.max(st.maxCombo, this.combo)
+      if (this.hitInStrongWind) st.windPerfects++
       if (golden) {
         st.goldenPerfects++
         // ごほうびは「次の1回だけコンボが切れない」。増えすぎないよう1で頭打ち。
@@ -825,22 +885,40 @@ export class Game {
         this.sfx.playPerfect()
         this.onCombo(this.combo)
       }
-    } else if (this.comboGuard > 0) {
-      // GOLDEN PERFECT のごほうび。1回だけコンボが切れない。
-      this.comboGuard--
-      this.ui.useGuard()
-      this.say('セーフ！', 1.2)
-    } else {
-      // PERFECT 以外はコンボ終了。分かりやすさを優先して例外は作らない。
-      this.combo = 0
-      this.say(pick(band === 'weak' ? LINES.weak : LINES.danger), 1.3)
+    } else if (band === 'weak' || band === 'over') {
+      if (band === 'weak') this.missions.stats.weaks++
+      else this.missions.stats.dangers++
+      this.afterMiss(band)
     }
     this.lastBand = null
     this.lastGold = false
   }
 
+  /** WEAK / DANGER のあと。ガードがあれば1回だけコンボを守る。 */
+  afterMiss(band) {
+    if (this.comboGuard > 0) {
+      // GOLDEN PERFECT のごほうび。1回だけコンボが切れない。
+      this.comboGuard--
+      this.ui.useGuard()
+      this.say('セーフ！', 1.2)
+      return
+    }
+    // PERFECT 以外はコンボ終了。分かりやすさを優先して例外は作らない。
+    this.combo = 0
+    this.say(pick(band === 'weak' ? LINES.weak : LINES.danger), 1.3)
+  }
+
   onDoorOpen() {
     this.missions.stats.doorOpened = 1
+  }
+
+  /** 隠し実績。初めて解除したときだけ、画面の端に小さく出す。操作は止めない。 */
+  checkAchievements() {
+    const fresh = this.achievements.check(this.missions.stats)
+    for (const a of fresh) {
+      this.ui.showAchievement(a)
+      this.sfx.playMissionComplete()
+    }
   }
 
   /** 背景ギミックの成果をミッションへ反映し、達成したものを知らせる。 */
@@ -848,6 +926,9 @@ export class Game {
     const st = this.missions.stats
     st.bellHits = this.props.bellHits
     st.cansToppled = this.props.cansToppled
+    st.missionsDone = this.missions.completed
+    st.missionsTotal = this.missions.list.length
+    this.checkAchievements()
     const done = this.missions.check()
     if (!done.length) return
     this.ui.renderMissions(this.missions)
@@ -931,8 +1012,7 @@ export class Game {
           // 着地に失敗した場合は演出を打ち切る。失敗にクリア演出は使わない。
           this.finale = null
           this.state = 'over'
-          this.ui.renderMissionResult(this.missions)
-          this.ui.showResult('GAME OVER', fail, false)
+          this.showResultPanel('GAME OVER', fail, false)
           return
         }
         const g = this.raizin.mesh.position
@@ -951,18 +1031,66 @@ export class Game {
         f.t = 0
       }
     } else if (f.phase === 'title') {
-      // RAIZIN CLEAR! を見せてから、あらためてミッション結果を出す
-      if (f.t >= F.missionDelay) {
+      // RAIZIN CLEAR! を大きく見せたら、あとはプレイヤーの好きなだけ眺められる時間にする
+      if (f.t >= F.titleHold) {
         this.finale = null
-        this.state = 'over'
-        this.ui.renderMissionResult(this.missions)
-        this.ui.showResult(this.clearTitle(), '雷神は最後まで倒れなかった', true)
+        this.enterAfterglow(this.clearTitle())
       }
     }
   }
 
+  /**
+   * クリア後の余韻タイム。
+   * 結果画面へは自動で移らない。カメラだけは自由に回せて、
+   * 飛んだブロックも倒れた缶も開いた扉もそのまま残る。
+   */
+  enterAfterglow(title) {
+    this.cleared = true // これ以降はゲームオーバー判定をしない
+    const st = this.missions.stats
+    st.cleared = true
+    st.missionsDone = this.missions.completed
+    st.missionsTotal = this.missions.list.length
+    this.checkAchievements()
+    this.state = 'afterglow'
+    this.clearedTitle = title
+    this.clearHighlights()
+    this.hammer.pivot.visible = false
+    this.ui.showFinaleTitle(title)
+    this.ui.enterAfterglow()
+    this.ui.renderMissions(this.missions)
+    this.say(pick(this.clearLines()), CONFIG.finale.lineSeconds)
+    // 軽い勝利リアクション。見た目だけなので、これで転ぶことはない。
+    this.raizin.view.bounce(1.1)
+    this.victoryHops = [0.45, 0.9]
+  }
+
+  clearLines() {
+    if (this.missions.stats.goldenPerfects > 0) return LINES.clearGolden
+    if (this.missions.allDone) return LINES.clearMissions
+    return LINES.clear
+  }
+
+  /** RESULT ボタン、または Enter / Space で結果画面へ。 */
+  showFinalResult() {
+    if (this.state !== 'afterglow') return
+    this.state = 'over'
+    this.showResultPanel(this.clearedTitle, '雷神は最後まで倒れなかった', true)
+  }
+
+  /** 結果画面。内訳・称号・ミッション結果をまとめて出す。 */
+  showResultPanel(title, sub, cleared) {
+    const st = this.missions.stats
+    st.missionsDone = this.missions.completed
+    st.missionsTotal = this.missions.list.length
+    this.ui.renderResultStats(st, pickTitle(st))
+    this.ui.renderMissionResult(this.missions)
+    this.ui.showResult(title, sub, cleared)
+  }
+
   /** ゲームオーバーなら理由の文字列、そうでなければ null。 */
   checkFailure() {
+    // クリアが確定したあとは、物理の微振動で倒れてもゲームオーバーにしない
+    if (this.cleared) return null
     const R = CONFIG.raizin
     const body = this.raizin.body
     const tilt = tiltDegrees(body)

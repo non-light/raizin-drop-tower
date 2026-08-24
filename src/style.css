@@ -311,6 +311,9 @@ html, body {
 
 #bubble.show { opacity: 1; }
 
+/* 盤面より手前。雷神の裏に回り込むことはない */
+#bubble { z-index: 5; }
+
 /* --- ミッションパネル --- */
 #missions {
   position: absolute;
@@ -505,4 +508,233 @@ html, body {
   font-size: 12px;
   letter-spacing: 0.14em;
   color: rgba(205, 218, 250, 0.85);
+}
+
+/* --- クリア後の余韻タイム --- */
+/* 盤面を広く見せたいので、遊んでいる最中のUIは引っ込める */
+#ui.afterglow #gauge-wrap,
+#ui.afterglow #judge,
+#ui.afterglow #combo,
+#ui.afterglow #guard,
+#ui.afterglow #blocktype,
+#ui.afterglow #phase,
+#ui.afterglow #hint {
+  display: none;
+}
+
+#afterglow {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#ui.afterglow #afterglow {
+  display: flex;
+  animation: agIn 0.5s ease-out both;
+}
+
+@keyframes agIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+#to-result {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  padding: 11px 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 216, 94, 0.55);
+  background: rgba(38, 32, 12, 0.82);
+  color: #ffe680;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+#to-result:hover { background: rgba(64, 54, 18, 0.9); }
+
+.ag-hint {
+  font-size: 11px;
+  color: rgba(190, 205, 240, 0.6);
+}
+
+.ag-hint b { color: rgba(220, 232, 255, 0.85); font-weight: 600; }
+
+/* 余韻タイム中は、タイトルを小さくして上へ寄せる（盤面をふさがない） */
+#finale-title.settled {
+  animation: none;
+  opacity: 1;
+  top: 13%;
+  font-size: clamp(22px, 3.4vw, 40px);
+  transition: top 0.5s ease, font-size 0.5s ease;
+}
+
+/* --- 実績の解除演出（画面の端に小さく。操作は止めない） --- */
+#ach-toast {
+  position: absolute;
+  right: 18px;
+  bottom: 74px;
+  padding: 9px 15px;
+  border-radius: 10px;
+  background: rgba(14, 20, 36, 0.88);
+  border: 1px solid rgba(255, 216, 94, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  max-width: 260px;
+}
+
+#ach-toast.show { animation: achIn 3.4s ease-out forwards; }
+
+@keyframes achIn {
+  0% { opacity: 0; transform: translateX(18px); }
+  8% { opacity: 1; transform: translateX(0); }
+  82% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(18px); }
+}
+
+#ach-toast .ach-head {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 216, 94, 0.85);
+}
+
+#ach-toast .ach-name {
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffe680;
+}
+
+/* --- RESULT の内訳と称号 --- */
+#result-stats {
+  margin: 2px 0 14px;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 22px;
+  justify-content: space-between;
+  text-align: left;
+  font-size: 13px;
+}
+
+#result-stats dt { color: rgba(190, 202, 228, 0.7); }
+#result-stats dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #eef2ff;
+}
+
+#result-stats dd.hit { color: #ffd85e; }
+
+#title-box {
+  margin: 0 0 14px;
+  padding: 10px 4px;
+  border-top: 1px solid rgba(150, 180, 255, 0.2);
+  border-bottom: 1px solid rgba(150, 180, 255, 0.2);
+  text-align: left;
+}
+
+#title-name {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #ffe680;
+  text-shadow: 0 0 18px rgba(255, 200, 60, 0.35);
+  text-align: center;
+}
+
+.result-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+#open-ach {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  padding: 11px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(150, 180, 255, 0.35);
+  background: transparent;
+  color: rgba(214, 226, 255, 0.85);
+  cursor: pointer;
+}
+
+#open-ach:hover { background: rgba(60, 76, 116, 0.5); }
+
+/* --- 実績一覧 --- */
+#ach-panel {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 22, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+#ach-panel.show { display: flex; pointer-events: auto; }
+
+.ach-panel-inner {
+  width: min(460px, 88vw);
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 22px 26px 20px;
+  border-radius: 14px;
+  background: rgba(16, 22, 38, 0.96);
+  border: 1px solid rgba(150, 180, 255, 0.24);
+}
+
+.ach-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ach-panel-head h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  color: rgba(214, 226, 255, 0.9);
+}
+
+#ach-count { font-size: 12px; color: rgba(170, 195, 245, 0.75); }
+
+#ach-list { list-style: none; margin: 0 0 18px; padding: 0; }
+
+#ach-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(150, 180, 255, 0.1);
+  font-size: 13px;
+  color: rgba(150, 165, 195, 0.7);
+}
+
+#ach-list li.got { color: #ffe680; }
+#ach-list li .ach-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(150, 165, 195, 0.55);
+}
+
+#close-ach {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(150, 180, 255, 0.4);
+  background: #2c3a5e;
+  color: #eef2ff;
+  cursor: pointer;
 }

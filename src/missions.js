@@ -52,12 +52,18 @@ export function rollMissions(previousIds = []) {
 export function newStats() {
   return {
     perfects: 0,
+    weaks: 0,
+    dangers: 0,
     maxCombo: 0,
     perfectByType: { normal: 0, heavy: 0, slippery: 0, gold: 0 },
     bellHits: 0,
     cansToppled: 0,
     doorOpened: 0,
     goldenPerfects: 0,
+    windPerfects: 0, // 強い風の最中に決めた PERFECT
+    cleared: false,
+    missionsDone: 0,
+    missionsTotal: 0,
   }
 }
 

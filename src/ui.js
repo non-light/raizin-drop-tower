@@ -1,4 +1,5 @@
 import { CONFIG } from './config.js'
+import { ACHIEVEMENTS } from './achievements.js'
 
 export class UI {
   constructor() {
@@ -36,6 +37,16 @@ export class UI {
     this.flash = document.getElementById('flash')
     this.soundBtn = document.getElementById('sound')
     this.soundIcon = document.getElementById('sound-icon')
+    this.ui = document.getElementById('ui')
+    this.toResult = document.getElementById('to-result')
+    this.resultStats = document.getElementById('result-stats')
+    this.titleName = document.getElementById('title-name')
+    this.achToast = document.getElementById('ach-toast')
+    this.achPanel = document.getElementById('ach-panel')
+    this.achList = document.getElementById('ach-list')
+    this.achCount = document.getElementById('ach-count')
+    this.openAch = document.getElementById('open-ach')
+    this.closeAch = document.getElementById('close-ach')
 
     this.bubbleUntil = 0
     this.setZone(CONFIG.blockTypes.normal)
@@ -84,6 +95,54 @@ export class UI {
   }
 
   // ---- COMBO GUARD ----
+  // ---- RESULT の内訳と称号 ----
+  renderResultStats(stats, title) {
+    const rows = [
+      ['PERFECT', String(stats.perfects + stats.goldenPerfects)],
+      ['MAX COMBO', String(stats.maxCombo)],
+      ['DANGER', String(stats.dangers)],
+      ['MISSIONS', `${stats.missionsDone} / ${stats.missionsTotal}`],
+      ['GOLDEN PERFECT', stats.goldenPerfects > 0 ? '✓' : '—'],
+    ]
+    this.resultStats.innerHTML = ''
+    for (const [k, v] of rows) {
+      const dt = document.createElement('dt')
+      dt.textContent = k
+      const dd = document.createElement('dd')
+      dd.textContent = v
+      if (v === '✓') dd.className = 'hit'
+      this.resultStats.append(dt, dd)
+    }
+    this.titleName.textContent = `${title.mark} ${title.name} ${title.mark}`
+  }
+
+  // ---- 実績 ----
+  showAchievement(a) {
+    this.achToast.querySelector('.ach-name').textContent = `${a.mark} ${a.name}`
+    this.achToast.className = ''
+    void this.achToast.offsetWidth
+    this.achToast.className = 'show'
+  }
+
+  renderAchievements(achievements) {
+    this.achList.innerHTML = ''
+    for (const a of ACHIEVEMENTS) {
+      const got = achievements.has(a.id)
+      const li = document.createElement('li')
+      li.className = got ? 'got' : ''
+      // 未解除のものは名前を伏せて、ヒントだけ見せる
+      li.innerHTML = got
+        ? `${a.mark} ${a.name}`
+        : `??? <span class="ach-hint">${a.hint}</span>`
+      this.achList.appendChild(li)
+    }
+    this.achCount.textContent = `${achievements.count} / ${ACHIEVEMENTS.length}`
+  }
+
+  toggleAchPanel(on) {
+    this.achPanel.classList.toggle('show', on)
+  }
+
   setGuard(n) {
     this.guard.className = n > 0 ? 'show' : ''
     if (n > 0) this.guard.textContent = `COMBO GUARD ×${n}`
@@ -110,6 +169,17 @@ export class UI {
 
   hideFinaleTitle() {
     this.finaleTitle.className = ''
+  }
+
+  /** 余韻タイム。遊んでいる最中のUIを引っ込め、タイトルを小さくして上へ寄せる。 */
+  enterAfterglow() {
+    this.ui.classList.add('afterglow')
+    this.finaleTitle.classList.add('settled')
+  }
+
+  exitAfterglow() {
+    this.ui.classList.remove('afterglow')
+    this.finaleTitle.classList.remove('settled')
   }
 
   setMuted(muted) {
@@ -172,11 +242,12 @@ export class UI {
   }
 
   updateBubble(screen, now) {
-    if (now > this.bubbleUntil) {
+    // 時間切れ、または雷神がカメラの後ろに回ったときは引っ込める
+    if (now > this.bubbleUntil || !screen) {
       this.bubble.classList.remove('show')
       return
     }
-    if (!screen) return
+    this.bubble.classList.add('show')
     this.bubble.style.left = `${screen.x}px`
     this.bubble.style.top = `${screen.y}px`
   }
@@ -193,6 +264,7 @@ export class UI {
   }
 
   showResult(title, sub, cleared) {
+    this.exitAfterglow()
     this.hideFinaleTitle()
     this.resultTitle.textContent = title
     this.resultTitle.classList.toggle('clear', cleared)

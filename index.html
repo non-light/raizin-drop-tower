@@ -28,6 +28,10 @@
     </div>
 
     <div id="mission-toast"></div>
+    <div id="ach-toast">
+      <div class="ach-head">ACHIEVEMENT UNLOCKED</div>
+      <div class="ach-name"></div>
+    </div>
     <div id="flash"></div>
 
     <button id="sound" title="音のオン・オフ（M）">
@@ -59,16 +63,43 @@
 
     <div id="finale-title"><span id="finale-text">RAIZIN CLEAR!</span></div>
 
+    <div id="afterglow">
+      <button id="to-result">結果を見る</button>
+      <div class="ag-hint">ドラッグで見回せます ・ ホイールでズーム ・ <b>Enter</b> / <b>Space</b> でも進めます</div>
+    </div>
+
+    <div id="ach-panel">
+      <div class="ach-panel-inner">
+        <div class="ach-panel-head">
+          <h2>ACHIEVEMENTS</h2>
+          <div id="ach-count"></div>
+        </div>
+        <ul id="ach-list"></ul>
+        <button id="close-ach">← もどる</button>
+      </div>
+    </div>
+
     <div id="result">
       <div class="result-panel">
         <h1 id="result-title">GAME OVER</h1>
         <p id="result-sub"></p>
+        <dl id="result-stats"></dl>
+
+        <div id="title-box">
+          <div class="mr-head">TITLE</div>
+          <div id="title-name">⚡ 挑戦者 ⚡</div>
+        </div>
+
         <div id="mission-result">
           <div class="mr-head">MISSION RESULT</div>
           <ul id="mission-result-list"></ul>
           <div id="mission-result-count"></div>
         </div>
-        <button id="retry">もう一度</button>
+
+        <div class="result-buttons">
+          <button id="retry">もう一度</button>
+          <button id="open-ach">ACHIEVEMENTS</button>
+        </div>
       </div>
     </div>
   </div>
