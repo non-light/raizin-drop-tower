@@ -13,7 +13,7 @@
 
 ## 遊ぶ
 
-**https://non-light.github.io/raizin-drop-tower/**
+**https://daruma.lightspirits.jp/**
 
 ブラウザで開くだけです。インストールは要りません。
 
