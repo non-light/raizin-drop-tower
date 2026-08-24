@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { CONFIG } from './config.js'
 import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
+import { placeStatic } from './physics.js'
+import { blockShape } from './tower.js'
 
 /**
  * 隠しボーナス。
@@ -12,6 +14,15 @@ import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
  * 金のブロックを出したまま放っておいてもクリアできる。
  * UI に「鍵を狙え」とは書かない。見つけたときに気づく作りにしてある。
  */
+/** 金のブロックの当たり判定。通常ブロックと同じ考えかたで作る。 */
+function goldShape(r, h) {
+  if (CONFIG.block.shape === 'cylinder') {
+    return new CANNON.Cylinder(r, r, h, CONFIG.block.shapeSegments)
+  }
+  const half = r * CONFIG.block.shapeScale
+  return new CANNON.Box(new CANNON.Vec3(half, h / 2, half))
+}
+
 export class Bonus {
   constructor({ scene, world, mats, sfx, onDoorOpen }) {
     this.scene = scene
@@ -85,24 +96,41 @@ export class Bonus {
       shape: new CANNON.Box(new CANNON.Vec3(0.55, 0.34, 0.3)),
       material: this.mats.ground,
     })
-    body.position.set(x, y, z)
+    // 鍵は薄いので、物理では止めない（静的ボディに当てると急停止して不自然）。
+    // 当たりの検出はトリガー側で確実に行い、当たった手応えは
+    // 鍵が勢いよく回ることと、ブロックを少しだけ逸らすことで見せる。
+    body.collisionResponse = false
+    placeStatic(body, x, y, z)
     this.add(null, body)
-    body.addEventListener('collide', (e) => {
-      if (!e.body.isBlock || this.unlocked) return
-      const v = Math.abs(e.contact.getImpactVelocityAlongNormal())
-      if (v < 1.2) return
-      this.unlock()
-    })
-
-    this.key = { group, gold, spin: 0, t: 0 }
+    this.key = { group, gold, spin: 0, t: 0, center: [x, y, z] }
   }
 
-  unlock() {
+  /** 当たり検出をトリガー側へ登録する。鍵は1ゲームに1回だけ。 */
+  registerTriggers(triggers) {
+    if (!this.key) return
+    triggers.add({
+      id: 'key',
+      center: this.key.center,
+      radius: CONFIG.triggers.key.radius,
+      halfHeight: CONFIG.triggers.key.halfHeight,
+      once: true,
+      onHit: (body) => this.unlock(body),
+    })
+  }
+
+  unlock(body) {
+    if (this.unlocked) return
     this.unlocked = true
     this.phase = 'opening'
     this.timer = 0
-    this.key.spin = 9
+    this.key.spin = 14
     this.sfx.playKeyUnlock()
+    // かすめた手応え。強く跳ね返さず、少しだけ逸らして持ち上げる。
+    if (body) {
+      const v = body.velocity
+      v.y += 1.6
+      body.angularVelocity.y += 3
+    }
   }
 
   // ---------------------------------------------------------------- 扉
@@ -155,7 +183,8 @@ export class Bonus {
   spawnGold() {
     const G = CONFIG.bonus.gold
     const [x, , z] = G.at
-    const [w, h, d] = G.size
+    const r = G.radius
+    const h = G.height
 
     const side = new THREE.MeshStandardMaterial({
       map: makeWoodSideTexture(5, [232, 190, 84]),
@@ -169,14 +198,17 @@ export class Bonus {
       metalness: 0.9,
       emissive: 0x1a1200,
     })
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [side, side, cap, cap, side, side])
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(r, r, h, CONFIG.block.segments),
+      [side, cap, cap]
+    )
     mesh.castShadow = true
     mesh.receiveShadow = true
     this.scene.add(mesh)
 
     const body = new CANNON.Body({
       mass: G.type.mass,
-      shape: new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2)),
+      shape: goldShape(r, h),
       material: this.mats.block,
       linearDamping: 0.06,
       angularDamping: 0.2,
@@ -200,7 +232,7 @@ export class Bonus {
       shape: new CANNON.Cylinder(0.95, 1.1, 0.3, 12),
       material: this.mats.ground,
     })
-    standBody.position.set(x, 0.15, z)
+    placeStatic(standBody, x, 0.15, z)
     this.add(stand, standBody)
 
     this.gold = {

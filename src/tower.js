@@ -7,6 +7,19 @@ import { RaizinView } from './raizin.js'
 // NORMAL は段の切れ目が見えないと狙えないので、明暗を交互に付ける
 const NORMAL_SHADES = [1.0, 0.78, 0.94, 0.7, 1.06, 0.84]
 
+/**
+ * ブロックの当たり判定。見た目はつねに円柱だが、当たり判定は切り替えられる。
+ * 既定は箱。理由は config.js のコメントを参照。
+ */
+export function blockShape() {
+  const B = CONFIG.block
+  if (B.shape === 'cylinder') {
+    return new CANNON.Cylinder(B.radius, B.radius, B.height, B.shapeSegments)
+  }
+  const h = B.radius * B.shapeScale
+  return new CANNON.Box(new CANNON.Vec3(h, B.height / 2, h))
+}
+
 /** どの段をどの種類にするか、毎ゲーム決め直す。 */
 function rollTypes(count) {
   const list = []
@@ -33,9 +46,7 @@ export function buildTower({ scene, world, mats, sprites }) {
   const P = CONFIG.physics
 
   const blocks = []
-  const halfX = B.width / 2
   const halfY = B.height / 2
-  const halfZ = B.depth / 2
 
   const typeKeys = rollTypes(B.count)
 
@@ -52,16 +63,12 @@ export function buildTower({ scene, world, mats, sprites }) {
     const sideMat = new THREE.MeshStandardMaterial({ map: side, ...opts })
     const capMat = new THREE.MeshStandardMaterial({ map: cap, ...opts })
 
-    // BoxGeometry のマテリアル順は [+X, -X, +Y, -Y, +Z, -Z]。
-    // 側面だけ段の境目つきのテクスチャ、天面と底面は木口にする。
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(B.width, B.height, B.depth), [
-      sideMat,
-      sideMat,
-      capMat,
-      capMat,
-      sideMat,
-      sideMat,
-    ])
+    // CylinderGeometry のマテリアル順は [側面, 天面, 底面]。
+    // 側面は段の境目を焼き込んだ木目、天面と底面は木口にする。
+    const mesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(B.radius, B.radius, B.height, B.segments),
+      [sideMat, capMat, capMat]
+    )
     mesh.castShadow = true
     mesh.receiveShadow = true
     scene.add(mesh)
@@ -69,7 +76,7 @@ export function buildTower({ scene, world, mats, sprites }) {
     const baseMaterial = mats[typeKey] || mats.block
     const body = new CANNON.Body({
       mass: B.mass * type.mass,
-      shape: new CANNON.Box(new CANNON.Vec3(halfX, halfY, halfZ)),
+      shape: blockShape(),
       material: baseMaterial,
       linearDamping: P.linearDamping,
       angularDamping: P.angularDamping,
@@ -116,10 +123,12 @@ export function buildTower({ scene, world, mats, sprites }) {
     angularDamping: R.angularDamping,
   })
   // 重心が下がるので、多少揺れても持ちこたえる（起き上がりこぼしと同じ理屈）
-  raizinBody.addShape(
-    new CANNON.Box(new CANNON.Vec3(R.bodyWidth / 2, shapeHalfY, R.bodyDepth / 2)),
-    new CANNON.Vec3(0, R.comDrop, 0)
-  )
+  // 雷神もブロックと同じ種類の形にしておく。箱と円柱が混ざると接触が荒れる。
+  const raizinShape =
+    CONFIG.block.shape === 'cylinder'
+      ? new CANNON.Cylinder(R.bodyRadius, R.bodyRadius, R.height, CONFIG.block.shapeSegments)
+      : new CANNON.Box(new CANNON.Vec3(R.bodyRadius, shapeHalfY, R.bodyRadius))
+  raizinBody.addShape(raizinShape, new CANNON.Vec3(0, R.comDrop, 0))
   raizinBody.position.set(0, stackTop - bottomLocal, 0)
   raizinBody.allowSleep = true
   raizinBody.sleepSpeedLimit = 0.1

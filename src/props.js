@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import { CONFIG } from './config.js'
 import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
+import { placeStatic } from './physics.js'
 
 /**
  * 塔のまわりに置く、飛んだブロックが当たると反応するもの。
@@ -93,20 +94,32 @@ export class Props {
       shape: new CANNON.Cylinder(0.78 * s, 0.78 * s, 1.5 * s, 12),
       material: mats.ground,
     })
-    body.position.set(x, 2.05 * s, z)
+    placeStatic(body, x, 2.05 * s, z)
     this.world.addBody(body)
-    body.addEventListener('collide', (e) => {
-      if (!e.body.isBlock) return
-      const v = Math.abs(e.contact.getImpactVelocityAlongNormal())
-      if (v < CONFIG.audio.minImpact) return
-      this.bellHits++
-      this.sfx.playBell(Math.min(1, 0.4 + v / 14))
-      this.bell.swing = Math.min(0.5, 0.12 + v / 30)
-      this.bell.t = 0
-    })
-
+    // 当たりの検出はトリガー側で行う。この物理ボディは
+    // 「ブロックが素通りせず、ちゃんと当たって弾かれる」ための見た目担当。
     this.statics.push({ mesh: group, body })
-    this.bell = { pivot, swing: 0, t: 0 }
+    this.bell = { pivot, swing: 0, t: 0, center: [x, 2.05 * s, z] }
+  }
+
+  /** 当たり検出をトリガー側へ登録する。 */
+  registerTriggers(triggers) {
+    if (!this.bell) return
+    triggers.add({
+      id: 'bell',
+      center: this.bell.center,
+      radius: CONFIG.triggers.bell.radius,
+      halfHeight: CONFIG.triggers.bell.halfHeight,
+      cooldown: 0.35,
+      onHit: (body, speed) => this.ringBell(speed),
+    })
+  }
+
+  ringBell(speed) {
+    this.bellHits++
+    this.sfx.playBell(Math.min(1, 0.45 + speed / 16))
+    this.bell.swing = Math.min(0.5, 0.14 + speed / 30)
+    this.bell.t = 0
   }
 
   // ---- 空き缶 ----

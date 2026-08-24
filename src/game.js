@@ -12,6 +12,7 @@ import { Sfx } from './sfx.js'
 import { Bonus } from './bonus.js'
 import { Lightning } from './finale.js'
 import { Missions } from './missions.js'
+import { Triggers } from './triggers.js'
 import { UI } from './ui.js'
 
 const HOVER_EMISSIVE = new THREE.Color(0x3a2205)
@@ -57,6 +58,7 @@ export class Game {
     this.hammer = new Hammer(scene)
     this.wind = new Wind(scene)
     this.lightning = new Lightning(scene)
+    this.triggers = new Triggers(scene)
     this.prevMissionIds = []
     this.raycaster = new THREE.Raycaster()
     this.pointer = new THREE.Vector2()
@@ -67,6 +69,8 @@ export class Game {
     // 使い回す作業用の入れもの
     this.dir = new THREE.Vector3()
     this.tmpVec = new THREE.Vector3()
+    this.hitPoint = new THREE.Vector3()
+    this.aimPoint = new THREE.Vector3()
     this.impulse = new CANNON.Vec3()
     this.offset = new CANNON.Vec3()
 
@@ -134,6 +138,14 @@ export class Game {
       sfx: this.sfx,
       onDoorOpen: () => this.onDoorOpen(),
     })
+    // 当たり検出用のトリガーを組み直す。物理の衝突とは別に持っていて、
+    // 速いブロックが1フレームで通り抜けても取りこぼさない。
+    this.triggers.dispose()
+    this.triggers = new Triggers(this.scene)
+    this.props.registerTriggers(this.triggers)
+    this.bonus.registerTriggers(this.triggers)
+    this.triggers.setDebug(CONFIG.debug.showColliders)
+
     this.wind.stop()
 
     this.state = 'idle' // idle / charging / swinging / settling / over
@@ -302,6 +314,12 @@ export class Game {
       if (k === 'r') this.reset()
       if (k === 'c') this.orbit.reset()
       if (k === 'm') toggleSound()
+      if (k === 'd') {
+        CONFIG.debug.showColliders = !CONFIG.debug.showColliders
+        CONFIG.debug.logTriggers = CONFIG.debug.showColliders
+        this.triggers.setDebug(CONFIG.debug.showColliders)
+        this.setColliderDebug(CONFIG.debug.showColliders)
+      }
     })
   }
 
@@ -330,11 +348,12 @@ export class Game {
   }
 
   /** ブロック中心から、その向きの表面までの距離。ハンマーを表面で止めるのに使う。 */
+  /**
+   * ブロック中心から、その向きの表面までの距離。
+   * 円柱なので、どの向きから叩いても半径そのままで済む。
+   */
   surfaceDistance(dir, piece) {
-    const gold = piece?.kind === 'gold'
-    const hx = (gold ? CONFIG.bonus.gold.size[0] : CONFIG.block.width) / 2
-    const hz = (gold ? CONFIG.bonus.gold.size[2] : CONFIG.block.depth) / 2
-    return Math.min(hx / Math.max(1e-4, Math.abs(dir.x)), hz / Math.max(1e-4, Math.abs(dir.z)))
+    return piece?.kind === 'gold' ? CONFIG.bonus.gold.radius : CONFIG.block.radius
   }
 
   aimHammer(piece) {
@@ -359,6 +378,8 @@ export class Game {
     const meshes = targets.map((b) => b.mesh)
     const hit = this.raycaster.intersectObjects(meshes, false)[0]
     const piece = hit ? targets.find((b) => b.mesh === hit.object) : null
+    // どこを叩いたかで回り方が変わるので、当たった点を覚えておく
+    if (hit) this.hitPoint.copy(hit.point)
 
     if (piece !== this.hovered) {
       this.hovered = piece
@@ -372,6 +393,7 @@ export class Game {
 
   select(piece) {
     this.selected = piece
+    this.aimPoint.copy(this.hitPoint)
     this.ui.setBlockType(piece.type, piece.typeKey)
     this.ui.setZone(piece.type)
     this.refreshHighlights()
@@ -432,12 +454,18 @@ export class Game {
     piece.slideUntil = this.time + (band === 'weak' ? H.weakSlideTime : H.slideTime)
 
     this.impulse.set(dir.x * speed * body.mass, 0, dir.z * speed * body.mass)
+    // 中心をとらえれば まっすぐ、外せば その分だけ回りながら抜ける。
     this.offset.set(0, 0, 0)
+    const lateral = this.lateralOffset(piece, dir)
+    if (lateral) {
+      this.offset.x = -dir.z * lateral
+      this.offset.z = dir.x * lateral
+    }
 
     if (band === 'over') {
       this.impulse.y = speed * body.mass * H.overhitLift
       // 重心より下を叩いて暴れさせる
-      this.offset.set(0, -CONFIG.block.height * 0.34, 0)
+      this.offset.y = -CONFIG.block.height * 0.34
       const excess = this.overhitExcess(power, type)
       // 進行方向に対して横倒しになる向きへ回す
       const spin = H.overhitTorque * excess * (0.6 + Math.random() * 0.8)
@@ -504,7 +532,7 @@ export class Game {
     this.offset.set(0, 0, 0)
     if (band === 'over') {
       this.impulse.y = speed * body.mass * H.overhitLift
-      this.offset.set(0, -CONFIG.bonus.gold.size[1] * 0.34, 0)
+      this.offset.set(0, -CONFIG.bonus.gold.height * 0.34, 0)
       body.angularVelocity.x += dir.z * H.overhitTorque
       body.angularVelocity.z += -dir.x * H.overhitTorque
     }
@@ -519,6 +547,23 @@ export class Game {
     this.state = 'settling'
     this.settleTimer = 0
     this.quietTimer = 0
+  }
+
+  /**
+   * 叩いた点が、ブロックの中心からどれだけ横にずれていたか。
+   * この量だけ力の作用点をずらすので、外して叩くと回りながら抜ける。
+   */
+  lateralOffset(piece, dir) {
+    const k = CONFIG.hit.offCenterSpin
+    if (!k) return 0
+    const p = piece.body.position
+    const dx = this.aimPoint.x - p.x
+    const dz = this.aimPoint.z - p.z
+    if (dx === 0 && dz === 0) return 0
+    // 叩く向きに直交する成分だけを取り出す
+    const lateral = -dz * dir.x + dx * dir.z
+    const limit = CONFIG.block.radius * 0.8
+    return Math.max(-limit, Math.min(limit, lateral)) * k
   }
 
   /** 「強すぎ」の踏み越え具合を 0〜1 で返す。少し超えただけでも効くよう曲げてある。 */
@@ -574,6 +619,7 @@ export class Game {
     }
 
     this.updatePieceStates()
+    this.updateTriggers()
     this.props.update(dt)
     this.bonus.update(dt)
     this.updateMissions()
@@ -591,6 +637,39 @@ export class Game {
     if (this.state === 'settling') this.updateSettling(dt)
 
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** 開発用。物理の当たり判定を線で出す。D キーで切り替え。 */
+  setColliderDebug(on) {
+    if (!on) {
+      if (this.colliderDebug) {
+        this.scene.remove(this.colliderDebug)
+        this.colliderDebug = null
+      }
+      return
+    }
+    const group = new THREE.Group()
+    const mat = new THREE.LineBasicMaterial({ color: 0xff9d3d })
+    for (const body of this.world.bodies) {
+      for (let i = 0; i < body.shapes.length; i++) {
+        const shape = body.shapes[i]
+        let geo = null
+        if (shape.halfExtents) {
+          const h = shape.halfExtents
+          geo = new THREE.BoxGeometry(h.x * 2, h.y * 2, h.z * 2)
+        } else if (shape.radiusTop !== undefined) {
+          geo = new THREE.CylinderGeometry(shape.radiusTop, shape.radiusBottom, shape.height, 12)
+        }
+        if (!geo) continue
+        const line = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mat)
+        const off = body.shapeOffsets[i]
+        line.position.set(body.position.x + off.x, body.position.y + off.y, body.position.z + off.z)
+        line.quaternion.copy(body.quaternion)
+        group.add(line)
+      }
+    }
+    this.scene.add(group)
+    this.colliderDebug = group
   }
 
   lowestBlock() {
@@ -622,6 +701,22 @@ export class Game {
     this.ui.setWind({ arrow, label: this.wind.label, warning: this.wind.warning })
   }
 
+  /**
+   * 飛んでいるブロックを、前フレームからの線分としてトリガーに通す。
+   * どれだけ速くても、どの向きから来ても抜けない。
+   */
+  updateTriggers() {
+    const r = CONFIG.triggers.blockRadius
+    const hh = CONFIG.triggers.blockHalfHeight
+    const movers = []
+    for (const b of this.blocks) {
+      if (b.despawned) continue
+      movers.push({ body: b.body, radius: r, halfHeight: hh })
+    }
+    if (this.bonus.gold) movers.push({ body: this.bonus.gold.body, radius: r, halfHeight: hh })
+    this.triggers.update(this.time, movers)
+  }
+
   updatePieceStates() {
     const R = CONFIG.rules
     for (const b of this.blocks) {
@@ -633,12 +728,13 @@ export class Game {
             b.despawned = true
             b.mesh.visible = false
             this.world.removeBody(b.body)
+            this.triggers.forget(b.body)
           }
         }
         continue
       }
       const pos = b.body.position
-      if (Math.hypot(pos.x, pos.z) > R.clearOutFactor * CONFIG.block.width || pos.y < -1) {
+      if (Math.hypot(pos.x, pos.z) > R.clearOutFactor * CONFIG.block.radius * 2 || pos.y < -1) {
         b.state = 'out'
         if (!b.wasHit) this.strayCount++
         this.ui.setRemain(this.remaining)

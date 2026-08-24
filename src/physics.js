@@ -1,6 +1,21 @@
 import * as CANNON from 'cannon-es'
 import { CONFIG } from './config.js'
 
+/**
+ * 静的ボディを置く。
+ *
+ * cannon-es は静的ボディを積分しないので、生成したあとに position を変えても
+ * AABB が作られたときのまま（＝原点のまま）になり、ブロードフェーズが
+ * 一度もペアにしてくれない。見た目では当たっているのに素通りする原因になる。
+ * 位置を決めたら必ずこれを通すこと。
+ */
+export function placeStatic(body, x, y, z) {
+  body.position.set(x, y, z)
+  body.aabbNeedsUpdate = true
+  body.updateAABB()
+  return body
+}
+
 /** 物理ワールドと、摩擦の組み合わせ（マテリアル）を作る。 */
 export function createWorld() {
   const P = CONFIG.physics
