@@ -16,6 +16,8 @@ export class Props {
     this.items = []   // 毎フレーム物理と同期するもの
     this.statics = []  // 動かないもの（片付け用）
     this.bell = null
+    this.bellHits = 0
+    this.cansToppled = 0
 
     if (!CONFIG.props.enabled) return
     this.addBell(mats)
@@ -97,7 +99,8 @@ export class Props {
       if (!e.body.isBlock) return
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal())
       if (v < CONFIG.audio.minImpact) return
-      this.sfx.bell(Math.min(1, 0.4 + v / 14))
+      this.bellHits++
+      this.sfx.playBell(Math.min(1, 0.4 + v / 14))
       this.bell.swing = Math.min(0.5, 0.12 + v / 30)
       this.bell.t = 0
     })
@@ -132,7 +135,7 @@ export class Props {
       body.allowSleep = true
       body.sleepSpeedLimit = 0.15
       body.sleepTimeLimit = 0.5
-      this.track(mesh, body, 'can', (p) => this.sfx.can(p))
+      this.track(mesh, body, 'can', (p) => this.sfx.playCanCrash(p))
     }
   }
 
@@ -165,15 +168,23 @@ export class Props {
       body.allowSleep = true
       body.sleepSpeedLimit = 0.14
       body.sleepTimeLimit = 0.5
-      this.track(mesh, body, 'crate', (p) => this.sfx.thud(p))
+      this.track(mesh, body, 'crate', (p) => this.sfx.playCrate(p))
     }
   }
 
   update(dt) {
+    let toppled = 0
     for (const it of this.items) {
       it.mesh.position.copy(it.body.position)
       it.mesh.quaternion.copy(it.body.quaternion)
+      // 缶が横倒しになったかを、上向きがどれだけ傾いたかで見る
+      if (it.kind === 'can') {
+        const q = it.body.quaternion
+        const upY = 1 - 2 * (q.x * q.x + q.z * q.z)
+        if (upY < 0.5) toppled++
+      }
     }
+    this.cansToppled = Math.max(this.cansToppled, toppled)
     // 鐘の揺れ。減衰する振り子。
     const b = this.bell
     if (b && b.swing > 0.001) {

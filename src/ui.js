@@ -24,8 +24,97 @@ export class UI {
     this.resultSub = document.getElementById('result-sub')
     this.retry = document.getElementById('retry')
 
+    this.guard = document.getElementById('guard')
+    this.missionPanel = document.getElementById('missions')
+    this.missionList = document.getElementById('mission-list')
+    this.missionToast = document.getElementById('mission-toast')
+    this.missionResult = document.getElementById('mission-result')
+    this.missionResultList = document.getElementById('mission-result-list')
+    this.missionResultCount = document.getElementById('mission-result-count')
+    this.finaleTitle = document.getElementById('finale-title')
+    this.finaleText = document.getElementById('finale-text')
+    this.flash = document.getElementById('flash')
+    this.soundBtn = document.getElementById('sound')
+    this.soundIcon = document.getElementById('sound-icon')
+
     this.bubbleUntil = 0
     this.setZone(CONFIG.blockTypes.normal)
+  }
+
+  // ---- ミッション ----
+  renderMissions(missions) {
+    this.missionList.innerHTML = ''
+    for (const m of missions.list) {
+      const li = document.createElement('li')
+      li.dataset.id = m.id
+      const done = missions.done.has(m.id)
+      li.className = done ? 'done' : ''
+      const mark = done ? '✓' : '○'
+      const prog = m.target > 1 ? `${missions.progress(m)} / ${m.target}` : ''
+      li.innerHTML = `<span class="mk">${mark}</span><span>${m.text}</span><span class="pg">${prog}</span>`
+      this.missionList.appendChild(li)
+    }
+  }
+
+  flashMission(id) {
+    const li = this.missionList.querySelector(`li[data-id="${id}"]`)
+    if (!li) return
+    li.classList.remove('flash')
+    void li.offsetWidth
+    li.classList.add('flash')
+  }
+
+  showMissionToast(text) {
+    this.missionToast.textContent = text
+    this.missionToast.className = ''
+    void this.missionToast.offsetWidth
+    this.missionToast.className = 'show'
+  }
+
+  renderMissionResult(missions) {
+    this.missionResultList.innerHTML = ''
+    for (const m of missions.list) {
+      const li = document.createElement('li')
+      const done = missions.done.has(m.id)
+      li.className = done ? 'done' : ''
+      li.textContent = `${done ? '✓' : '×'} ${m.text}`
+      this.missionResultList.appendChild(li)
+    }
+    this.missionResultCount.textContent = `${missions.completed} / ${missions.list.length} COMPLETE`
+  }
+
+  // ---- COMBO GUARD ----
+  setGuard(n) {
+    this.guard.className = n > 0 ? 'show' : ''
+    if (n > 0) this.guard.textContent = `COMBO GUARD ×${n}`
+  }
+
+  useGuard() {
+    this.guard.textContent = 'COMBO GUARD!'
+    this.guard.className = 'used'
+  }
+
+  // ---- クリア演出 ----
+  showFlash() {
+    this.flash.className = ''
+    void this.flash.offsetWidth
+    this.flash.className = 'show'
+  }
+
+  showFinaleTitle(text) {
+    this.finaleText.textContent = text
+    this.finaleTitle.className = ''
+    void this.finaleTitle.offsetWidth
+    this.finaleTitle.className = 'show'
+  }
+
+  hideFinaleTitle() {
+    this.finaleTitle.className = ''
+  }
+
+  setMuted(muted) {
+    this.soundIcon.textContent = muted ? '🔇' : '🔊'
+    this.soundBtn.classList.toggle('muted', muted)
   }
 
   /** ゲージの緑帯を、いま狙っているブロックの種類に合わせる。 */
@@ -104,6 +193,7 @@ export class UI {
   }
 
   showResult(title, sub, cleared) {
+    this.hideFinaleTitle()
     this.resultTitle.textContent = title
     this.resultTitle.classList.toggle('clear', cleared)
     this.resultSub.textContent = sub

@@ -1,0 +1,289 @@
+import * as THREE from 'three'
+import * as CANNON from 'cannon-es'
+import { CONFIG } from './config.js'
+import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
+
+/**
+ * 隠しボーナス。
+ *
+ *   飛ばしたブロックが鍵に当たる → カチャッ → 扉がゆっくり開く → 金のブロックが出る
+ *
+ * クリアには一切関係しない。鍵に当てなくてもクリアできるし、
+ * 金のブロックを出したまま放っておいてもクリアできる。
+ * UI に「鍵を狙え」とは書かない。見つけたときに気づく作りにしてある。
+ */
+export class Bonus {
+  constructor({ scene, world, mats, sfx, onDoorOpen }) {
+    this.scene = scene
+    this.world = world
+    this.mats = mats
+    this.sfx = sfx
+    this.onDoorOpen = onDoorOpen
+
+    this.unlocked = false // 1ゲームに1回だけ
+    this.phase = 'locked' // locked / opening / open
+    this.timer = 0
+    this.gold = null
+    this.objects = []
+    this.bodies = []
+
+    if (!CONFIG.bonus.enabled) return
+    this.buildKey()
+    this.buildDoor()
+  }
+
+  add(mesh, body) {
+    if (mesh) {
+      this.scene.add(mesh)
+      this.objects.push(mesh)
+    }
+    if (body) {
+      this.world.addBody(body)
+      this.bodies.push(body)
+    }
+  }
+
+  // ---------------------------------------------------------------- 鍵
+  buildKey() {
+    const [x, y, z] = CONFIG.bonus.key.at
+    const group = new THREE.Group()
+    group.position.set(x, y, z)
+
+    const gold = new THREE.MeshStandardMaterial({
+      color: 0xd9b451,
+      roughness: 0.25,
+      metalness: 0.95,
+      emissive: 0x2a1d00,
+    })
+
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.86, 12), gold)
+    shaft.rotation.z = Math.PI / 2
+    group.add(shaft)
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.06, 10, 20), gold)
+    bow.position.x = -0.55
+    bow.rotation.y = Math.PI / 2
+    group.add(bow)
+    for (const [ox, h] of [[0.3, 0.2], [0.42, 0.14]]) {
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.08), gold)
+      tooth.position.set(ox, -h / 2 - 0.04, 0)
+      group.add(tooth)
+    }
+    group.traverse((o) => (o.castShadow = true))
+
+    // 支柱。鍵が宙に浮いて見えないように。
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.09, y, 10),
+      new THREE.MeshStandardMaterial({ color: 0x4a4237, roughness: 0.9 })
+    )
+    post.position.set(x, y / 2, z)
+    post.castShadow = true
+    this.add(post, null)
+    this.add(group, null)
+
+    const body = new CANNON.Body({
+      type: CANNON.Body.STATIC,
+      shape: new CANNON.Box(new CANNON.Vec3(0.55, 0.34, 0.3)),
+      material: this.mats.ground,
+    })
+    body.position.set(x, y, z)
+    this.add(null, body)
+    body.addEventListener('collide', (e) => {
+      if (!e.body.isBlock || this.unlocked) return
+      const v = Math.abs(e.contact.getImpactVelocityAlongNormal())
+      if (v < 1.2) return
+      this.unlock()
+    })
+
+    this.key = { group, gold, spin: 0, t: 0 }
+  }
+
+  unlock() {
+    this.unlocked = true
+    this.phase = 'opening'
+    this.timer = 0
+    this.key.spin = 9
+    this.sfx.playKeyUnlock()
+  }
+
+  // ---------------------------------------------------------------- 扉
+  buildDoor() {
+    const D = CONFIG.bonus.door
+    const [x, , z] = D.at
+    const group = new THREE.Group()
+    group.position.set(x, 0, z)
+    // 塔のほうを向かせる
+    group.rotation.y = Math.atan2(-x, -z)
+
+    const stone = new THREE.MeshStandardMaterial({ color: 0x565f74, roughness: 0.95 })
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(D.width + 0.5, D.height + 0.4, 0.4),
+      stone
+    )
+    frame.position.y = (D.height + 0.4) / 2
+    frame.castShadow = true
+    frame.receiveShadow = true
+    group.add(frame)
+
+    // 中の闇。扉が開くとここが見える。
+    const cave = new THREE.Mesh(
+      new THREE.BoxGeometry(D.width, D.height, 0.5),
+      new THREE.MeshBasicMaterial({ color: 0x0a0d16 })
+    )
+    cave.position.set(0, D.height / 2, -0.15)
+    group.add(cave)
+
+    // 扉。端を軸にして開く。
+    const hinge = new THREE.Group()
+    hinge.position.set(-D.width / 2, 0, 0.16)
+    group.add(hinge)
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(D.width, D.height, 0.12),
+      new THREE.MeshStandardMaterial({
+        map: makeWoodSideTexture(91, [122, 86, 52], false),
+        roughness: 0.85,
+      })
+    )
+    panel.position.set(D.width / 2, D.height / 2, 0)
+    panel.castShadow = true
+    hinge.add(panel)
+
+    this.add(group, null)
+    this.door = { hinge, angle: 0 }
+  }
+
+  // ---------------------------------------------------------------- 金のブロック
+  spawnGold() {
+    const G = CONFIG.bonus.gold
+    const [x, , z] = G.at
+    const [w, h, d] = G.size
+
+    const side = new THREE.MeshStandardMaterial({
+      map: makeWoodSideTexture(5, [232, 190, 84]),
+      roughness: 0.22,
+      metalness: 0.9,
+      emissive: 0x1a1200,
+    })
+    const cap = new THREE.MeshStandardMaterial({
+      map: makeWoodCapTexture(5, [212, 172, 74]),
+      roughness: 0.22,
+      metalness: 0.9,
+      emissive: 0x1a1200,
+    })
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [side, side, cap, cap, side, side])
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    this.scene.add(mesh)
+
+    const body = new CANNON.Body({
+      mass: G.type.mass,
+      shape: new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2)),
+      material: this.mats.block,
+      linearDamping: 0.06,
+      angularDamping: 0.2,
+    })
+    body.position.set(x, G.spawnHeight, z)
+    body.isBlock = true
+    body.allowSleep = true
+    body.sleepSpeedLimit = 0.12
+    body.sleepTimeLimit = 0.5
+    this.world.addBody(body)
+
+    // 台座
+    const stand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.95, 1.1, 0.3, 20),
+      new THREE.MeshStandardMaterial({ color: 0x5c5342, roughness: 0.9 })
+    )
+    stand.position.set(x, 0.15, z)
+    stand.receiveShadow = true
+    const standBody = new CANNON.Body({
+      type: CANNON.Body.STATIC,
+      shape: new CANNON.Cylinder(0.95, 1.1, 0.3, 12),
+      material: this.mats.ground,
+    })
+    standBody.position.set(x, 0.15, z)
+    this.add(stand, standBody)
+
+    this.gold = {
+      kind: 'gold',
+      typeKey: 'gold',
+      type: CONFIG.bonus.gold.type,
+      mesh,
+      body,
+      sideMat: side,
+      capMat: cap,
+      highlightMats: [side, cap],
+      state: 'tower', // ゲーム側の当たり判定と同じ扱いにしておく
+      home: new THREE.Vector3(x, 0.3 + h / 2, z),
+      settleTimer: 0,
+    }
+    this.objects.push(mesh)
+    this.bodies.push(body)
+  }
+
+  /** 失敗して転がった金のブロックを、台座へ戻す。 */
+  returnGold() {
+    const g = this.gold
+    if (!g) return
+    g.body.position.set(g.home.x, CONFIG.bonus.gold.spawnHeight, g.home.z)
+    g.body.velocity.setZero()
+    g.body.angularVelocity.setZero()
+    g.body.quaternion.set(0, 0, 0, 1)
+    g.body.wakeUp()
+    g.settleTimer = 0
+    this.sfx.playDoor()
+  }
+
+  update(dt) {
+    const D = CONFIG.bonus.door
+
+    // 鍵はゆっくり回って、少し上下する。派手にはしない。
+    if (this.key) {
+      this.key.t += dt
+      this.key.group.rotation.y += (0.45 + this.key.spin) * dt
+      this.key.spin *= Math.pow(0.02, dt)
+      this.key.group.position.y = CONFIG.bonus.key.at[1] + Math.sin(this.key.t * 1.6) * 0.06
+      if (!this.unlocked) {
+        this.key.gold.emissive.setScalar(0.10 + Math.sin(this.key.t * 2.2) * 0.06)
+      } else {
+        this.key.gold.emissive.setScalar(0.02)
+      }
+    }
+
+    if (this.phase === 'opening') {
+      this.timer += dt
+      if (this.timer > D.openDelay) {
+        const k = Math.min(1, (this.timer - D.openDelay) / D.openTime)
+        if (this.door.angle === 0) this.sfx.playDoor()
+        this.door.angle = -1.95 * (1 - Math.pow(1 - k, 3))
+        this.door.hinge.rotation.y = this.door.angle
+        if (k >= 1) {
+          this.phase = 'open'
+          this.spawnGold()
+          this.onDoorOpen?.()
+        }
+      }
+    }
+
+    if (this.gold) {
+      this.gold.mesh.position.copy(this.gold.body.position)
+      this.gold.mesh.quaternion.copy(this.gold.body.quaternion)
+      // 台座から落ちたままなら、しばらくして戻す
+      const p = this.gold.body.position
+      const away = Math.hypot(p.x - this.gold.home.x, p.z - this.gold.home.z)
+      if (away > CONFIG.bonus.gold.strayDistance || p.y < -1) {
+        this.gold.settleTimer += dt
+        if (this.gold.settleTimer > CONFIG.bonus.gold.respawnDelay) this.returnGold()
+      } else {
+        this.gold.settleTimer = 0
+      }
+    }
+  }
+
+  dispose() {
+    for (const m of this.objects) this.scene.remove(m)
+    for (const b of this.bodies) this.world.removeBody(b)
+    this.objects.length = 0
+    this.bodies.length = 0
+    this.gold = null
+  }
+}

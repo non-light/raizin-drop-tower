@@ -9,6 +9,9 @@ import { Hammer } from './hammer.js'
 import { Wind } from './wind.js'
 import { Props } from './props.js'
 import { Sfx } from './sfx.js'
+import { Bonus } from './bonus.js'
+import { Lightning } from './finale.js'
+import { Missions } from './missions.js'
 import { UI } from './ui.js'
 
 const HOVER_EMISSIVE = new THREE.Color(0x3a2205)
@@ -19,6 +22,7 @@ const JUDGE = {
   weak: { kind: 'weak', text: 'WEAK' },
   good: { kind: 'perfect', text: 'PERFECT!' },
   over: { kind: 'danger', text: 'DANGER!' },
+  golden: { kind: 'golden', text: 'GOLDEN PERFECT!' },
 }
 
 // 雷神のひとこと。キャラクターを感じられる程度に短く。
@@ -29,6 +33,8 @@ const LINES = {
   combo: ['いいぞ！', '♪', 'のってきた'],
   hop: ['さいこう！', 'まだいける！'],
   wind: ['ふんばる…', 'かぜが…'],
+  golden: ['ぬおおっ！', 'これは…！'],
+  mission: ['やった！', 'いいね！'],
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
@@ -50,6 +56,8 @@ export class Game {
     this.sfx = new Sfx()
     this.hammer = new Hammer(scene)
     this.wind = new Wind(scene)
+    this.lightning = new Lightning(scene)
+    this.prevMissionIds = []
     this.raycaster = new THREE.Raycaster()
     this.pointer = new THREE.Vector2()
     this.clock = new THREE.Clock()
@@ -61,6 +69,9 @@ export class Game {
     this.tmpVec = new THREE.Vector3()
     this.impulse = new CANNON.Vec3()
     this.offset = new CANNON.Vec3()
+
+    this.timeScale = 1
+    this.finale = null
 
     this.reset()
     this.bindInput()
@@ -79,6 +90,7 @@ export class Game {
   reset() {
     if (this.world) {
       this.props?.dispose()
+      this.bonus?.dispose()
       for (const p of this.pieces) {
         this.world.removeBody(p.body)
         this.scene.remove(p.mesh)
@@ -103,6 +115,13 @@ export class Game {
     this.pieces = [...blocks, raizin]
 
     this.props = new Props({ scene: this.scene, world, mats, sfx: this.sfx })
+    this.bonus = new Bonus({
+      scene: this.scene,
+      world,
+      mats,
+      sfx: this.sfx,
+      onDoorOpen: () => this.onDoorOpen(),
+    })
     this.wind.stop()
 
     this.state = 'idle' // idle / charging / swinging / settling / over
@@ -114,6 +133,12 @@ export class Game {
     this.settleTimer = 0
     this.quietTimer = 0
     this.combo = 0
+    this.comboGuard = 0
+    this.timeScale = 1
+    this.finale = null
+
+    this.missions = new Missions(this.prevMissionIds)
+    this.prevMissionIds = this.missions.ids
 
     this.hammer.reset()
     this.aimHammer(blocks[0])
@@ -125,6 +150,10 @@ export class Game {
     this.ui.setPhase('ブロックを長押し')
     this.ui.setBlockType(null, null)
     this.ui.setWind(null)
+    this.ui.setGuard(0)
+    this.ui.hideFinaleTitle()
+    this.ui.renderMissions(this.missions)
+    this.ui.setMuted(this.sfx.muted)
 
     for (const p of this.pieces) syncMesh(p)
   }
@@ -245,11 +274,21 @@ export class Game {
     )
 
     this.ui.retry.addEventListener('click', () => this.reset())
+
+    const toggleSound = () => {
+      this.sfx.resume()
+      this.ui.setMuted(this.sfx.toggleMute())
+    }
+    this.ui.soundBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      toggleSound()
+    })
+
     addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase()
       if (k === 'r') this.reset()
       if (k === 'c') this.orbit.reset()
-      if (k === 'm') this.sfx.toggleMute()
+      if (k === 'm') toggleSound()
     })
   }
 
@@ -278,9 +317,10 @@ export class Game {
   }
 
   /** ブロック中心から、その向きの表面までの距離。ハンマーを表面で止めるのに使う。 */
-  surfaceDistance(dir) {
-    const hx = CONFIG.block.width / 2
-    const hz = CONFIG.block.depth / 2
+  surfaceDistance(dir, piece) {
+    const gold = piece?.kind === 'gold'
+    const hx = (gold ? CONFIG.bonus.gold.size[0] : CONFIG.block.width) / 2
+    const hz = (gold ? CONFIG.bonus.gold.size[2] : CONFIG.block.depth) / 2
     return Math.min(hx / Math.max(1e-4, Math.abs(dir.x)), hz / Math.max(1e-4, Math.abs(dir.z)))
   }
 
@@ -288,16 +328,24 @@ export class Game {
     if (!piece) return
     const dir = this.hitDirection(piece)
     this.tmpVec.set(piece.body.position.x, piece.body.position.y, piece.body.position.z)
-    this.hammer.aim(this.tmpVec, dir, this.surfaceDistance(dir))
+    this.hammer.aim(this.tmpVec, dir, this.surfaceDistance(dir, piece))
   }
 
   // ------------------------------------------------------------- 選択まわり
 
+  /** いま叩けるもの。塔のブロックと、出ていれば金のブロック。 */
+  hittable() {
+    const list = this.blocks.filter((b) => b.state === 'tower')
+    if (this.bonus?.gold) list.push(this.bonus.gold)
+    return list
+  }
+
   updateHover() {
     this.raycaster.setFromCamera(this.pointer, this.camera)
-    const meshes = this.blocks.filter((b) => b.state === 'tower').map((b) => b.mesh)
+    const targets = this.hittable()
+    const meshes = targets.map((b) => b.mesh)
     const hit = this.raycaster.intersectObjects(meshes, false)[0]
-    const piece = hit ? this.blocks.find((b) => b.mesh === hit.object) : null
+    const piece = hit ? targets.find((b) => b.mesh === hit.object) : null
 
     if (piece !== this.hovered) {
       this.hovered = piece
@@ -317,7 +365,9 @@ export class Game {
   }
 
   refreshHighlights() {
-    for (const b of this.blocks) {
+    const all = [...this.blocks]
+    if (this.bonus?.gold) all.push(this.bonus.gold)
+    for (const b of all) {
       const c =
         b === this.selected ? SELECT_EMISSIVE : b === this.hovered ? HOVER_EMISSIVE : NO_EMISSIVE
       b.sideMat.emissive.copy(c)
@@ -338,6 +388,8 @@ export class Game {
       this.state = 'settling'
       return
     }
+    this.sfx.playHammerHit(power)
+    if (piece.kind === 'gold') return this.applyGoldHit(piece, power, dir)
 
     const H = CONFIG.hit
     const type = piece.type
@@ -355,6 +407,7 @@ export class Game {
 
     const body = piece.body
     piece.wasHit = true
+    this.lastTypeKey = piece.typeKey
 
     // ここが「スコーン！」の肝。叩いた瞬間だけ摩擦を消したうえで、
     // 一定時間は叩いた向きの速度が落ちないよう保証する。
@@ -409,6 +462,47 @@ export class Game {
     }
 
     this.lastBand = band
+    this.lastGold = false
+    this.state = 'settling'
+    this.settleTimer = 0
+    this.quietTimer = 0
+
+    if (band === 'weak') this.sfx.playWeak()
+    else if (band === 'over') this.sfx.playDanger()
+    else this.sfx.playBlockSlide(power, this.remaining === 1 ? 1.5 : 1)
+
+    // 最後の1段をきれいに抜いたときだけ、特別なクリア演出へ入る
+    if (band === 'good' && this.remaining === 1) this.startFinale()
+  }
+
+  /**
+   * 金のブロック。塔とは別物なので、上に乗っているものへの影響はない。
+   * 失敗してもゲームオーバーにはならず、転がったら台座へ戻ってくる。
+   */
+  applyGoldHit(piece, power, dir) {
+    const H = CONFIG.hit
+    const type = piece.type
+    const band = power < type.weakMax ? 'weak' : power <= type.goodMax ? 'good' : 'over'
+    const speed = (H.speedMin + (H.speedMax - H.speedMin) * power) * type.speedScale
+    const body = piece.body
+    body.wakeUp()
+
+    this.impulse.set(dir.x * speed * body.mass, 0, dir.z * speed * body.mass)
+    this.offset.set(0, 0, 0)
+    if (band === 'over') {
+      this.impulse.y = speed * body.mass * H.overhitLift
+      this.offset.set(0, -CONFIG.bonus.gold.size[1] * 0.34, 0)
+      body.angularVelocity.x += dir.z * H.overhitTorque
+      body.angularVelocity.z += -dir.x * H.overhitTorque
+    }
+    body.applyImpulse(this.impulse, this.offset)
+
+    if (band === 'weak') this.sfx.playWeak()
+    else if (band === 'over') this.sfx.playDanger()
+    else this.sfx.playBlockSlide(power, 1.3)
+
+    this.lastBand = band
+    this.lastGold = true
     this.state = 'settling'
     this.settleTimer = 0
     this.quietTimer = 0
@@ -423,7 +517,12 @@ export class Game {
 
   // ------------------------------------------------------------- 毎フレーム
 
-  update(dt) {
+  update(realDt) {
+    // 演出の進行は実時間で。スローモーション中でも尺は変わらない。
+    this.updateFinale(realDt)
+    this.lightning.update(realDt)
+
+    const dt = realDt * this.timeScale
     this.time += dt
 
     if (this.state === 'charging') {
@@ -463,6 +562,9 @@ export class Game {
 
     this.updatePieceStates()
     this.props.update(dt)
+    this.bonus.update(dt)
+    this.updateMissions()
+    this.sfx.setWind(this.wind.strength, this.wind.label === 'STRONG WIND')
 
     for (const p of this.pieces) syncMesh(p)
 
@@ -558,17 +660,23 @@ export class Game {
 
     if (band) this.showJudgement(band, fail)
 
+    this.ui.renderMissions(this.missions)
+
     if (fail) {
       this.combo = 0
       this.state = 'over'
       this.ui.setPhase('—')
+      this.ui.renderMissionResult(this.missions)
       this.ui.showResult('GAME OVER', fail, false)
       return
     }
 
     if (this.remaining === 0) {
+      // 最後の1段を「ちょうどいい」で抜いたときは startFinale 側で処理される。
+      // ここへ来るのは、強すぎて飛んでいった場合など。
       this.state = 'over'
       this.ui.setPhase('—')
+      this.ui.renderMissionResult(this.missions)
       this.ui.showResult('CLEAR！', '雷神は最後まで倒れなかった', true)
       return
     }
@@ -580,22 +688,70 @@ export class Game {
     if (this.wind.maybeStart()) this.say(pick(LINES.wind), 1.6)
   }
 
-  /** WEAK / PERFECT / DANGER の表示と、PERFECT コンボの更新。 */
+  /** WEAK / PERFECT / DANGER（金なら GOLDEN PERFECT）の表示と、コンボの更新。 */
   showJudgement(band, failed) {
-    const j = JUDGE[band]
+    const gold = this.lastGold
+    const golden = gold && band === 'good'
+    const j = JUDGE[golden ? 'golden' : band]
     this.ui.showJudge(j.kind, j.text)
 
     if (band === 'good' && !failed) {
       this.combo++
       this.ui.showCombo(this.combo)
-      this.sfx.combo(this.combo)
-      this.onCombo(this.combo)
+      this.sfx.playCombo(this.combo)
+      const st = this.missions.stats
+      st.maxCombo = Math.max(st.maxCombo, this.combo)
+      if (golden) {
+        st.goldenPerfects++
+        // ごほうびは「次の1回だけコンボが切れない」。増えすぎないよう1で頭打ち。
+        this.comboGuard = 1
+        this.ui.setGuard(this.comboGuard)
+        this.sfx.playGoldenPerfect()
+        this.raizin.view.bounce(1)
+        this.say(pick(LINES.golden), 1.6)
+      } else {
+        st.perfects++
+        if (st.perfectByType[this.lastTypeKey] !== undefined) st.perfectByType[this.lastTypeKey]++
+        this.sfx.playPerfect()
+        this.onCombo(this.combo)
+      }
+    } else if (this.comboGuard > 0) {
+      // GOLDEN PERFECT のごほうび。1回だけコンボが切れない。
+      this.comboGuard--
+      this.ui.useGuard()
+      this.say('セーフ！', 1.2)
     } else {
       // PERFECT 以外はコンボ終了。分かりやすさを優先して例外は作らない。
       this.combo = 0
       this.say(pick(band === 'weak' ? LINES.weak : LINES.danger), 1.3)
     }
     this.lastBand = null
+    this.lastGold = false
+  }
+
+  onDoorOpen() {
+    this.missions.stats.doorOpened = 1
+  }
+
+  /** 背景ギミックの成果をミッションへ反映し、達成したものを知らせる。 */
+  updateMissions() {
+    const st = this.missions.stats
+    st.bellHits = this.props.bellHits
+    st.cansToppled = this.props.cansToppled
+    const done = this.missions.check()
+    if (!done.length) return
+    this.ui.renderMissions(this.missions)
+    for (const m of done) this.ui.flashMission(m.id)
+    this.sfx.playMissionComplete()
+    if (this.missions.allDone) {
+      this.ui.showMissionToast('ALL MISSIONS COMPLETE!')
+      this.raizin.view.bounce(1.2)
+      this.say('ぜんぶ やった！', 2.0)
+    } else {
+      this.ui.showMissionToast('MISSION COMPLETE!')
+      this.raizin.view.bounce(0.5)
+      this.say(pick(LINES.mission), 1.4)
+    }
   }
 
   onCombo(count) {
@@ -614,6 +770,85 @@ export class Game {
 
   say(text, seconds) {
     this.ui.say(text, seconds, this.time)
+  }
+
+  // ------------------------------------------------- 最後の1段のクリア演出
+
+  /**
+   *   スロー → スコーン → 着地 → 0.5秒の間 → 雷 → RAIZIN CLEAR! → ミッション結果
+   * の順に進む。ゲームオーバーのときはここを通らない。
+   */
+  startFinale() {
+    this.showJudgement('good', null)
+    this.ui.renderMissions(this.missions)
+    this.timeScale = CONFIG.finale.slowScale
+    this.finale = { phase: 'slow', t: 0 }
+    this.state = 'finale'
+    this.orbit.bob(CONFIG.finale.shake)
+  }
+
+  clearTitle() {
+    if (this.missions.stats.goldenPerfects > 0) return 'GOLDEN CLEAR!'
+    if (this.missions.allDone) return 'PERFECT CLEAR!'
+    return 'RAIZIN CLEAR!'
+  }
+
+  /** 実時間で進む。スローモーション中でも演出の尺は変わらない。 */
+  updateFinale(dt) {
+    if (!this.finale) return
+    const F = CONFIG.finale
+    const f = this.finale
+    f.t += dt
+
+    if (f.phase === 'slow') {
+      if (f.t >= F.slowTime) {
+        this.timeScale = 1
+        f.phase = 'land'
+        f.t = 0
+      }
+    } else if (f.phase === 'land') {
+      const b = this.raizin.body
+      const bottom = b.position.y + (CONFIG.raizin.comDrop - CONFIG.raizin.height / 2)
+      if ((b.velocity.length() < 0.7 && bottom < 0.4) || f.t > 3) {
+        this.sfx.playLand()
+        f.phase = 'pause'
+        f.t = 0
+      }
+    } else if (f.phase === 'pause') {
+      if (f.t >= F.pause) {
+        const fail = this.checkFailure()
+        if (fail) {
+          // 着地に失敗した場合は演出を打ち切る。失敗にクリア演出は使わない。
+          this.finale = null
+          this.state = 'over'
+          this.ui.renderMissionResult(this.missions)
+          this.ui.showResult('GAME OVER', fail, false)
+          return
+        }
+        const g = this.raizin.mesh.position
+        this.tmpVec.set(g.x, g.y, g.z)
+        this.lightning.strike(this.tmpVec, F.thunderTime)
+        this.ui.showFlash()
+        this.sfx.playThunder()
+        f.phase = 'thunder'
+        f.t = 0
+      }
+    } else if (f.phase === 'thunder') {
+      if (f.t >= F.thunderTime + F.titleDelay) {
+        this.ui.showFinaleTitle(this.clearTitle())
+        this.sfx.playClear()
+        f.phase = 'title'
+        f.t = 0
+      }
+    } else if (f.phase === 'title') {
+      // RAIZIN CLEAR! を見せてから、あらためてミッション結果を出す
+      if (f.t >= F.missionDelay) {
+        this.finale = null
+        this.state = 'over'
+        this.ui.renderMissionResult(this.missions)
+        this.ui.showResult(this.clearTitle(), '雷神は最後まで倒れなかった', true)
+      }
+    }
   }
 
   /** ゲームオーバーなら理由の文字列、そうでなければ null。 */

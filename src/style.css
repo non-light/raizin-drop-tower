@@ -310,3 +310,199 @@ html, body {
 }
 
 #bubble.show { opacity: 1; }
+
+/* --- ミッションパネル --- */
+#missions {
+  position: absolute;
+  top: 58px;
+  right: 18px;
+  width: 232px;
+  padding: 10px 13px 12px;
+  border-radius: 10px;
+  background: rgba(10, 16, 30, 0.6);
+  border: 1px solid rgba(150, 180, 255, 0.22);
+  backdrop-filter: blur(4px);
+  font-size: 12px;
+}
+
+.mission-head {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: rgba(170, 195, 245, 0.75);
+  margin-bottom: 7px;
+}
+
+#mission-list,
+#mission-result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#mission-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 0;
+  color: rgba(224, 233, 252, 0.86);
+  line-height: 1.35;
+}
+
+#mission-list li .mk { color: rgba(150, 175, 220, 0.7); }
+#mission-list li .pg {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: rgba(170, 195, 245, 0.7);
+}
+
+#mission-list li.done { color: #8ff0b6; }
+#mission-list li.done .mk { color: #8ff0b6; }
+#mission-list li.done .pg { color: #8ff0b6; }
+#mission-list li.flash { animation: mFlash 0.9s ease-out; }
+
+@keyframes mFlash {
+  0% { background: rgba(143, 240, 182, 0.45); }
+  100% { background: transparent; }
+}
+
+/* --- ミッション達成トースト --- */
+#mission-toast {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #8ff0b6;
+  opacity: 0;
+  white-space: nowrap;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+
+#mission-toast.show { animation: comboPop 1.4s ease-out forwards; }
+
+/* --- COMBO GUARD --- */
+#guard {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 216, 94, 0.6);
+  background: rgba(40, 30, 6, 0.7);
+  color: #ffd85e;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  opacity: 0;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+#guard.show { opacity: 1; }
+#guard.used { animation: guardUsed 0.9s ease-out forwards; }
+
+@keyframes guardUsed {
+  0% { opacity: 1; transform: translateX(-50%) scale(1); }
+  30% { opacity: 1; transform: translateX(-50%) scale(1.25); }
+  100% { opacity: 0; transform: translateX(-50%) scale(1); }
+}
+
+/* --- GOLDEN PERFECT --- */
+#judge.golden {
+  color: #ffdf6b;
+  font-size: 54px;
+  text-shadow: 0 0 22px rgba(255, 200, 60, 0.65), 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+
+/* --- 音ボタン --- */
+#sound {
+  position: absolute;
+  right: 18px;
+  bottom: 22px;
+  pointer-events: auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(150, 180, 255, 0.3);
+  background: rgba(10, 16, 30, 0.6);
+  color: #dce6ff;
+  font-size: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+#sound:hover { background: rgba(30, 42, 72, 0.8); }
+#sound.muted { opacity: 0.5; }
+
+/* --- 雷の閃光 --- */
+#flash {
+  position: absolute;
+  inset: 0;
+  background: rgba(200, 226, 255, 0.55);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#flash.show { animation: flashOut 0.45s ease-out forwards; }
+
+@keyframes flashOut {
+  0% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
+/* --- RAIZIN CLEAR! --- */
+#finale-title {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  white-space: nowrap;
+  font-size: clamp(34px, 7vw, 74px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #ffe680;
+  text-shadow: 0 0 30px rgba(255, 200, 60, 0.5), 0 4px 22px rgba(0, 0, 0, 0.65);
+}
+
+#finale-title.show { animation: finalePop 0.7s cubic-bezier(0.2, 1.5, 0.4, 1) forwards; }
+
+@keyframes finalePop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* --- 結果のミッション欄 --- */
+#mission-result {
+  margin: 4px 0 20px;
+  padding: 12px 4px 10px;
+  border-top: 1px solid rgba(150, 180, 255, 0.2);
+  border-bottom: 1px solid rgba(150, 180, 255, 0.2);
+  text-align: left;
+}
+
+.mr-head {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: rgba(170, 195, 245, 0.75);
+  margin-bottom: 7px;
+}
+
+#mission-result-list li {
+  padding: 2px 0;
+  font-size: 13px;
+  color: rgba(190, 200, 220, 0.65);
+}
+
+#mission-result-list li.done { color: #8ff0b6; }
+
+#mission-result-count {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: rgba(205, 218, 250, 0.85);
+}

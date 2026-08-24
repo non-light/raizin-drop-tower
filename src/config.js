@@ -173,6 +173,46 @@ export const CONFIG = {
     ],
   },
 
+  // 隠しボーナス。鍵に当てると扉が開き、金のブロックが出る。
+  // クリアには一切関係しない。出さなくても、出して叩かなくてもクリアできる。
+  bonus: {
+    enabled: true,
+    // 初期カメラの正面（+X+Z 側）ではなく、回さないと狙えない向きに置いてある
+    key: { at: [-7.2, 1.65, 5.4] },
+    door: { at: [-8.9, 0, 6.7], width: 1.6, height: 2.3, openDelay: 0.45, openTime: 1.1 },
+    gold: {
+      at: [-5.9, 0, 4.6],    // 台座の位置
+      spawnHeight: 2.6,      // 扉から出てきて、ここから落ちる
+      size: [1.5, 0.62, 1.5],
+      respawnDelay: 1.1,     // 失敗して転がったあと、戻ってくるまで
+      strayDistance: 2.2,    // 台座からこれだけ離れたら戻す
+      type: {
+        label: 'GOLD',
+        mass: 1.3,
+        speedScale: 1.15,
+        weakMax: 0.40,       // 通常より緑帯が狭い
+        goodMax: 0.62,
+      },
+    },
+  },
+
+  // ミッション。2つランダムに出る。達成しなくてもクリアできる。
+  missions: {
+    enabled: true,
+    count: 2,
+  },
+
+  // 最後の1段を抜いたときだけの特別演出。
+  finale: {
+    slowScale: 0.32,       // スローモーションの速度
+    slowTime: 0.55,        // スローの長さ（実時間）
+    pause: 0.5,            // 着地してからの「間」
+    thunderTime: 0.45,     // 雷が出ている時間
+    titleDelay: 0.15,      // 雷のあと RAIZIN CLEAR! までの間
+    missionDelay: 1.3,     // RAIZIN CLEAR! のあとミッション結果までの間
+    shake: 0.1,            // 抜けた瞬間のカメラの揺れ。小さめに
+  },
+
   audio: {
     enabled: true,
     volume: 0.35,
