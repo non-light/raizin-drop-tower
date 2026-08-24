@@ -252,6 +252,7 @@ python3 tools/slice_raizin.py assets/raizin_daruma.png
 | 金ブロックの難しさ | `bonus.gold.type.weakMax` / `goodMax` |
 | クリア演出の尺 | `finale.slowTime` / `pause` / `thunderTime` / `missionDelay` |
 | 音量 | `audio.volume` |
+| 「ゲーム一覧へ」の飛び先 | `hubUrl` |
 
 ブラウザのコンソールから `window.game` でゲーム本体に触れます（`window.game.cfg` が上の設定）。
 

@@ -393,6 +393,8 @@ export class Game {
       e.stopPropagation()
       this.openStageSelect()
     })
+    // 飛び先は config で変えられるようにしておく
+    if (this.ui.hubLink) this.ui.hubLink.href = CONFIG.hubUrl
     this.ui.openAch.addEventListener('click', (e) => {
       e.stopPropagation()
       this.ui.renderAchievements(this.achievements)

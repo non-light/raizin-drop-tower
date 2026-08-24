@@ -324,5 +324,8 @@ export const CONFIG = {
     zoomSpeed: 0.0016,
   },
 
+  // 結果画面の「ゲーム一覧へ戻る」の飛び先
+  hubUrl: 'https://play.lightspirits.jp/',
+
   floorY: -0.4,            // 床メッシュの高さ。台の天面（y=0）と離して Z ファイティングを防ぐ
 }

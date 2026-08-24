@@ -60,6 +60,7 @@ export class UI {
     this.stageBanner = document.getElementById('stage-banner')
     this.openAch = document.getElementById('open-ach')
     this.stageBtn = document.getElementById('open-stage')
+    this.hubLink = document.getElementById('to-hub')
     this.closeAch = document.getElementById('close-ach')
     this.closeStage = document.getElementById('close-stage')
 

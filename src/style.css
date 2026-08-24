@@ -673,8 +673,12 @@ html, body {
   justify-content: center;
 }
 
+/* ボタンが増えたので折り返せるようにする */
+.result-buttons { flex-wrap: wrap; }
+
 #open-ach,
-#open-stage {
+#open-stage,
+#to-hub {
   pointer-events: auto;
   font: inherit;
   font-size: 13px;
@@ -688,7 +692,11 @@ html, body {
 }
 
 #open-ach:hover,
-#open-stage:hover { background: rgba(60, 76, 116, 0.5); }
+#open-stage:hover,
+#to-hub:hover { background: rgba(60, 76, 116, 0.5); }
+
+/* リンクなので、ボタンと同じ見た目に揃える */
+#to-hub { text-decoration: none; display: inline-block; }
 
 /* --- 実績一覧 --- */
 #ach-panel {
