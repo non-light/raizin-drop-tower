@@ -11,7 +11,13 @@
 
 ブラウザだけで動きます。Three.js + cannon-es + Vite。
 
-## 遊びかた
+## 遊ぶ
+
+**https://non-light.github.io/raizin-drop-tower/**
+
+ブラウザで開くだけです。インストールは要りません。
+
+手元で動かす場合は次のとおり。
 
 ```bash
 npm install
