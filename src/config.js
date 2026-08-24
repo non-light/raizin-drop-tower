@@ -46,7 +46,7 @@ export const CONFIG = {
   hit: {
     chargeCycle: 0.75,     // 0% → 100% にかかる秒数（往復するので1周期は1.5秒）
     weakMax: 0.30,         // これ未満は「弱すぎ」
-    goodMax: 0.78,         // これを超えると「強すぎ」
+    goodMax: 0.72,         // これを超えると「強すぎ」。ゲージの緑帯もこの値で描かれる
     speedMin: 2.0,         // パワー0%のときの初速
     speedMax: 28.0,        // パワー100%のときの初速
     slideTime: 0.30,       // 「ちょうどいい／強すぎ」で、抜ける勢いを保証する秒数。
@@ -84,10 +84,15 @@ export const CONFIG = {
 
   camera: {
     fov: 42,
-    target: [0, 3.4, 0],   // ずっとここを中心に見る
+    target: [0, 3.4, 0],   // 初期の注視点
+    followHeight: true,    // 段が減って塔が低くなるのに合わせて、注視点も下げる
+    followRate: 1.6,       // その追従の速さ。上げるとキビキビ、下げるとゆったり
+    followFactor: 0.45,    // 雷神の頭のてっぺんに対する注視点の高さの割合
+    minTargetY: 1.6,       // 注視点の下限（全部抜いたあとでも下がりすぎない）
+    maxTargetY: 4.0,
     yaw: 0.6,              // 初期の水平角(rad)
-    pitch: 0.32,           // 初期の仰角(rad)
-    distance: 14.0,        // 初期のカメラ距離
+    pitch: 0.28,           // 初期の仰角(rad)
+    distance: 15.5,        // 初期のカメラ距離
     minDistance: 6,
     maxDistance: 32,
     minPitch: 0.04,        // 床にもぐらない下限

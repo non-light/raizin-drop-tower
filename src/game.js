@@ -347,6 +347,11 @@ export class Game {
     this.updatePieceStates()
 
     for (const p of this.pieces) syncMesh(p)
+
+    // 塔が低くなっても、だるま落とし全体が画面の中心に来るようにする
+    const top = this.raizin.mesh.position.y + this.raizin.view.mesh.position.y + CONFIG.raizin.height
+    this.orbit.follow(top, dt)
+
     this.raizin.view.update(this.camera, this.raizin.mesh)
 
     if (this.state === 'settling') this.updateSettling(dt)

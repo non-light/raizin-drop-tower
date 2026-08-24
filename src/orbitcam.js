@@ -48,6 +48,15 @@ export class OrbitCam {
     this.camera.lookAt(this.target)
   }
 
+  /** 塔の高さに合わせて注視点をゆっくり上下させる。 */
+  follow(contentTopY, dt) {
+    const C = CONFIG.camera
+    if (!C.followHeight) return
+    const want = THREE.MathUtils.clamp(contentTopY * C.followFactor, C.minTargetY, C.maxTargetY)
+    this.target.y += (want - this.target.y) * Math.min(1, dt * C.followRate)
+    this.apply()
+  }
+
   reset() {
     const C = CONFIG.camera
     this.target.set(...C.target)
