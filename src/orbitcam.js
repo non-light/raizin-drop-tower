@@ -17,6 +17,8 @@ export class OrbitCam {
     this.yaw = C.yaw
     this.pitch = C.pitch
     this.distance = C.distance
+    this.bobAmount = 0
+    this.bobT = -1
     this.apply()
   }
 
@@ -45,7 +47,28 @@ export class OrbitCam {
       this.target.y + r * Math.sin(this.pitch),
       this.target.z + r * cp * Math.cos(this.yaw)
     )
+    if (this.bobT >= 0) {
+      const k = this.bobT / 0.34
+      this.camera.position.y += Math.sin(k * Math.PI * 2) * this.bobAmount * (1 - k)
+    }
     this.camera.lookAt(this.target)
+  }
+
+  /** コンボのごほうび。ごく軽く弾ませるだけ。大きくすると酔うので控えめに。 */
+  bob(amount) {
+    this.bobAmount = amount
+    this.bobT = 0
+  }
+
+  updateBob(dt) {
+    if (this.bobT < 0) return
+    this.bobT += dt
+    const life = 0.34
+    if (this.bobT >= life) {
+      this.bobT = -1
+      this.bobAmount = 0
+    }
+    this.apply()
   }
 
   /** 塔の高さに合わせて注視点をゆっくり上下させる。 */

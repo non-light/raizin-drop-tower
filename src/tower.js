@@ -4,15 +4,24 @@ import { CONFIG } from './config.js'
 import { makeWoodSideTexture, makeWoodCapTexture } from './textures.js'
 import { RaizinView } from './raizin.js'
 
-// 段の切れ目が見えないと狙えないので、明暗を交互にはっきり付けている
-const BLOCK_TINTS = [
-  [214, 164, 100],
-  [162, 106, 58],
-  [206, 152, 90],
-  [150, 96, 52],
-  [220, 176, 114],
-  [170, 114, 64],
-]
+// NORMAL は段の切れ目が見えないと狙えないので、明暗を交互に付ける
+const NORMAL_SHADES = [1.0, 0.78, 0.94, 0.7, 1.06, 0.84]
+
+/** どの段をどの種類にするか、毎ゲーム決め直す。 */
+function rollTypes(count) {
+  const list = []
+  for (const [key, t] of Object.entries(CONFIG.blockTypes)) {
+    for (let i = 0; i < t.count; i++) list.push(key)
+  }
+  while (list.length < count) list.push('normal')
+  list.length = count
+  // シャッフル
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[list[i], list[j]] = [list[j], list[i]]
+  }
+  return list
+}
 
 /**
  * 台の上に木製ブロックを積み、その一番上に雷神を乗せる。
@@ -28,12 +37,18 @@ export function buildTower({ scene, world, mats, sprites }) {
   const halfY = B.height / 2
   const halfZ = B.depth / 2
 
+  const typeKeys = rollTypes(B.count)
+
   for (let i = 0; i < B.count; i++) {
-    const tint = BLOCK_TINTS[i % BLOCK_TINTS.length]
+    const typeKey = typeKeys[i]
+    const type = CONFIG.blockTypes[typeKey]
+    // NORMAL だけは隣り合う段が同じ色にならないよう、明暗を振っている
+    const shade = typeKey === 'normal' ? NORMAL_SHADES[i % NORMAL_SHADES.length] : 1
+    const tint = type.tint.map((v) => Math.max(0, Math.min(255, Math.round(v * shade))))
     const side = makeWoodSideTexture(i + 1, tint)
     const cap = makeWoodCapTexture(i + 1, tint.map((v) => Math.round(v * 0.88)))
 
-    const opts = { roughness: 0.72, metalness: 0.02 }
+    const opts = { roughness: type.roughness, metalness: type.metalness }
     const sideMat = new THREE.MeshStandardMaterial({ map: side, ...opts })
     const capMat = new THREE.MeshStandardMaterial({ map: cap, ...opts })
 
@@ -51,10 +66,11 @@ export function buildTower({ scene, world, mats, sprites }) {
     mesh.receiveShadow = true
     scene.add(mesh)
 
+    const baseMaterial = mats[typeKey] || mats.block
     const body = new CANNON.Body({
-      mass: B.mass,
+      mass: B.mass * type.mass,
       shape: new CANNON.Box(new CANNON.Vec3(halfX, halfY, halfZ)),
-      material: mats.block,
+      material: baseMaterial,
       linearDamping: P.linearDamping,
       angularDamping: P.angularDamping,
     })
@@ -62,11 +78,15 @@ export function buildTower({ scene, world, mats, sprites }) {
     body.allowSleep = true
     body.sleepSpeedLimit = 0.12
     body.sleepTimeLimit = 0.4
+    body.isBlock = true // 背景ギミックが「ブロックが当たった」を判別するための目印
     world.addBody(body)
 
     blocks.push({
       kind: 'block',
       index: i,
+      typeKey,
+      type,
+      baseMaterial,
       mesh,
       body,
       sideMat,
@@ -87,7 +107,7 @@ export function buildTower({ scene, world, mats, sprites }) {
   const shapeHalfY = R.height / 2
   // シェイプは重心より comDrop だけ上にずらす。足元は重心から見て下の位置になる。
   const bottomLocal = R.comDrop - shapeHalfY
-  view.mesh.position.y = bottomLocal
+  view.setBaseY(bottomLocal)
 
   const raizinBody = new CANNON.Body({
     mass: R.mass,

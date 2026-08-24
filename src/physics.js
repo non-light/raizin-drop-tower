@@ -14,7 +14,7 @@ export function createWorld() {
   const mats = {
     ground: new CANNON.Material('ground'),
     block: new CANNON.Material('block'),
-    // 叩いた瞬間だけブロックに割り当てる、ほぼ摩擦ゼロのマテリアル。
+    // 叩いた瞬間だけブロックに割り当てる、摩擦ゼロのマテリアル。
     // これがあるおかげで「上を巻き込まずに横だけスコーンと抜ける」。
     slip: new CANNON.Material('slip'),
   }
@@ -27,6 +27,25 @@ export function createWorld() {
   pair(mats.slip, mats.block, P.friction.slip)
   pair(mats.slip, mats.ground, P.friction.slip)
   pair(mats.slip, mats.slip, P.friction.slip)
+
+  // 種類ごとに摩擦が違うブロック（HEAVY / SLIPPERY）ぶんのマテリアルを足す。
+  // 触れ合う2面のうち、すべりやすいほうに合わせる。
+  const typed = []
+  for (const [name, t] of Object.entries(CONFIG.blockTypes)) {
+    if (t.friction == null) continue
+    const m = new CANNON.Material('block-' + name)
+    m.blockFriction = t.friction
+    mats[name] = m
+    typed.push(m)
+  }
+  for (let i = 0; i < typed.length; i++) {
+    pair(typed[i], mats.block, Math.min(typed[i].blockFriction, P.friction.blockBlock))
+    pair(typed[i], mats.ground, Math.min(typed[i].blockFriction, P.friction.blockGround))
+    pair(typed[i], mats.slip, P.friction.slip)
+    for (let j = i; j < typed.length; j++) {
+      pair(typed[i], typed[j], Math.min(typed[i].blockFriction, typed[j].blockFriction))
+    }
+  }
 
   const ground = new CANNON.Body({
     type: CANNON.Body.STATIC,

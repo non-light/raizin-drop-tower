@@ -48,10 +48,39 @@ export class RaizinView {
     })
 
     this.dirIndex = 0
+    this.baseY = 0
+    this.bounceT = -1
+    this.bouncePower = 0
+  }
+
+  /** 足元の高さ（跳ねる前の位置）を決める。 */
+  setBaseY(y) {
+    this.baseY = y
+    this.mesh.position.y = y
+  }
+
+  /** コンボのごほうび。見た目だけ跳ねる。物理には一切さわらない。 */
+  bounce(power = 1) {
+    this.bounceT = 0
+    this.bouncePower = power
   }
 
   /** 物理の姿勢を保ったまま、板だけをカメラへ向ける。 */
-  update(camera, group) {
+  update(camera, group, dt = 0) {
+    if (this.bounceT >= 0) {
+      this.bounceT += dt
+      const t = this.bounceT
+      const life = 0.55
+      if (t >= life) {
+        this.bounceT = -1
+        this.mesh.position.y = this.baseY
+      } else {
+        const k = t / life
+        this.mesh.position.y =
+          this.baseY + Math.sin(k * Math.PI * 2) * 0.42 * this.bouncePower * (1 - k)
+      }
+    }
+
     const local = group.worldToLocal(camera.position.clone())
     const theta = Math.atan2(local.x, local.z)
 
