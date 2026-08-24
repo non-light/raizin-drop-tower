@@ -26,6 +26,8 @@ const JUDGE = {
   good: { kind: 'perfect', text: 'PERFECT!' },
   over: { kind: 'danger', text: 'DANGER!' },
   golden: { kind: 'golden', text: 'GOLDEN PERFECT!' },
+  goldWeak: { kind: 'goldfail', text: 'TOO WEAK' },
+  goldOver: { kind: 'goldfail', text: 'TOO STRONG' },
 }
 
 // 雷神のひとこと。キャラクターを感じられる程度に短く。
@@ -145,6 +147,7 @@ export class Game {
       mats,
       sfx: this.sfx,
       onDoorOpen: () => this.onDoorOpen(),
+      onGoldReady: () => this.onGoldReady(),
     })
     // 当たり検出用のトリガーを組み直す。物理の衝突とは別に持っていて、
     // 速いブロックが1フレームで通り抜けても取りこぼさない。
@@ -169,6 +172,8 @@ export class Game {
     this.timeScale = 1
     this.finale = null
     this.cleared = false
+    this.bonusPhase = null
+    this.bonusTimer = 0
     this.victoryHops = null
     this.hammer.pivot.visible = true
 
@@ -398,10 +403,14 @@ export class Game {
   // ------------------------------------------------------------- 選択まわり
 
   /** いま叩けるもの。塔のブロックと、出ていれば金のブロック。 */
+  /**
+   * いま叩けるもの。
+   * ボーナスチャレンジ中は金のコマだけ。誤って塔を叩いてしまわないようにしている。
+   * （カメラはこの間も自由に回せる）
+   */
   hittable() {
-    const list = this.blocks.filter((b) => b.state === 'tower')
-    if (this.bonus?.gold) list.push(this.bonus.gold)
-    return list
+    if (this.bonus?.goldState === 'ready') return [this.bonus.gold]
+    return this.blocks.filter((b) => b.state === 'tower')
   }
 
   updateHover() {
@@ -576,8 +585,8 @@ export class Game {
     else if (band === 'over') this.sfx.playDanger()
     else this.sfx.playBlockSlide(power, 1.3)
 
-    this.lastBand = band
     this.lastGold = true
+    this.resolveBonus(band)
     this.state = 'settling'
     this.settleTimer = 0
     this.quietTimer = 0
@@ -657,6 +666,8 @@ export class Game {
     this.updateTriggers()
     this.props.update(dt)
     this.bonus.update(dt)
+    this.updateBonus(realDt)
+    this.updateBonusTag()
     this.updateMissions()
     this.sfx.setWind(this.wind.strength, this.wind.label === 'STRONG WIND')
 
@@ -910,6 +921,96 @@ export class Game {
 
   onDoorOpen() {
     this.missions.stats.doorOpened = 1
+  }
+
+  /** 金のコマが台座に乗った。ここから1回きりの挑戦。 */
+  onGoldReady() {
+    this.bonusPhase = 'ready'
+    this.say('お、なんだあれ！', 2.2)
+    this.sfx.playCombo(4)
+  }
+
+  /**
+   * 金のコマの画面位置。案内をそこへ貼る。
+   * 画面の外なら端に寄せて、矢印で方向を示す（カメラは勝手に動かさない）。
+   */
+  goldScreenPos() {
+    const gold = this.bonus?.gold
+    if (!gold) return null
+    const p = gold.body.position
+    this.tmpVec.set(p.x, p.y + CONFIG.bonus.gold.height + 0.5, p.z).project(this.camera)
+    const r = this.canvas.getBoundingClientRect()
+    const behind = this.tmpVec.z > 1
+    let nx = this.tmpVec.x
+    let ny = this.tmpVec.y
+    if (behind) {
+      nx = -nx
+      ny = -ny
+    }
+    const inView = !behind && Math.abs(nx) <= 0.94 && Math.abs(ny) <= 0.9
+    const m = 74
+    let x = r.left + (nx * 0.5 + 0.5) * r.width
+    let y = r.top + (-ny * 0.5 + 0.5) * r.height
+    if (inView) return { x, y, offscreen: false }
+    // 画面の端へ寄せて、中心から見た方向を矢印に
+    x = Math.min(Math.max(x, r.left + m), r.right - m)
+    y = Math.min(Math.max(y, r.top + m), r.bottom - m)
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    return { x, y, offscreen: true, angle: Math.atan2(y - cy, x - cx) }
+  }
+
+  updateBonusTag() {
+    const b = this.bonus
+    if (!b || !this.bonusPhase) {
+      this.ui.setBonusTag(null)
+      return
+    }
+    const at = this.goldScreenPos()
+    if (this.bonusPhase === 'ready') {
+      this.ui.setBonusTag(at, 'BONUS CHANCE!', 'GOLD BLOCK をクリックして叩け！')
+    } else {
+      this.ui.setBonusTag(at, this.bonusResultText, '')
+    }
+  }
+
+  /** ボーナスの決着。失敗してもゲームには一切ひびかない。 */
+  resolveBonus(band) {
+    const success = band === 'good'
+    this.bonus.resolveGold(success)
+    this.bonusPhase = 'result'
+    this.bonusTimer = 0
+
+    const st = this.missions.stats
+    if (success) {
+      st.goldenPerfects++
+      this.comboGuard = 1
+      this.ui.setGuard(this.comboGuard)
+      this.ui.showJudge(JUDGE.golden.kind, JUDGE.golden.text)
+      this.bonusResultText = 'COMBO GUARD ×1 GET!'
+      this.sfx.playGoldenPerfect()
+      this.raizin.view.bounce(1.1)
+      this.say(pick(LINES.golden), 1.8)
+    } else {
+      const j = band === 'weak' ? JUDGE.goldWeak : JUDGE.goldOver
+      this.ui.showJudge(j.kind, j.text)
+      this.bonusResultText = 'CHALLENGE FAILED'
+      this.sfx.playWeak()
+      this.say('むむ…', 1.4)
+    }
+    // 判定は出したので、通常の判定処理には渡さない
+    this.lastBand = null
+    this.lastGold = false
+  }
+
+  /** 結果を少し見せてから、通常のだるま落としへ戻す。 */
+  updateBonus(dt) {
+    if (this.bonusPhase !== 'result') return
+    this.bonusTimer += dt
+    if (this.bonusTimer >= CONFIG.bonus.gold.resultHold) {
+      this.bonusPhase = null
+      this.ui.setBonusTag(null)
+    }
   }
 
   /** 隠し実績。初めて解除したときだけ、画面の端に小さく出す。操作は止めない。 */

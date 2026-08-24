@@ -24,17 +24,21 @@ function goldShape(r, h) {
 }
 
 export class Bonus {
-  constructor({ scene, world, mats, sfx, onDoorOpen }) {
+  constructor({ scene, world, mats, sfx, onDoorOpen, onGoldReady }) {
     this.scene = scene
     this.world = world
     this.mats = mats
     this.sfx = sfx
     this.onDoorOpen = onDoorOpen
+    this.onGoldReady = onGoldReady
 
     this.unlocked = false // 1ゲームに1回だけ
     this.phase = 'locked' // locked / opening / open
     this.timer = 0
     this.gold = null
+    // none → entering（扉から出てくる）→ ready（叩ける）→ resolved（1回きりで終了）
+    this.goldState = 'none'
+    this.goldTimer = 0
     this.objects = []
     this.bodies = []
 
@@ -213,7 +217,15 @@ export class Bonus {
       linearDamping: 0.06,
       angularDamping: 0.2,
     })
-    body.position.set(x, G.spawnHeight, z)
+    // 扉の中から出てきて、台座へ乗る。いきなり現れないようにする。
+    const [dx, , dz] = CONFIG.bonus.door.at
+    body.position.set(dx, G.standTop + 0.35, dz)
+    body.type = CANNON.Body.KINEMATIC
+    body.mass = 0
+    body.updateMassProperties()
+    const t = G.entryTime
+    body.velocity.set((x - dx) / t, 0, (z - dz) / t)
+    body.angularVelocity.set(0, 5.5, 0)
     body.isBlock = true
     body.allowSleep = true
     body.sleepSpeedLimit = 0.12
@@ -227,6 +239,11 @@ export class Bonus {
     )
     stand.position.set(x, 0.15, z)
     stand.receiveShadow = true
+    this.standMesh = stand
+    this.standGlow = new THREE.PointLight(0xffcf5a, 0, 5)
+    this.standGlow.position.set(x, G.standTop, z)
+    this.scene.add(this.standGlow)
+    this.objects.push(this.standGlow)
     const standBody = new CANNON.Body({
       type: CANNON.Body.STATIC,
       shape: new CANNON.Cylinder(0.95, 1.1, 0.3, 12),
@@ -245,24 +262,36 @@ export class Bonus {
       capMat: cap,
       highlightMats: [side, cap],
       state: 'tower', // ゲーム側の当たり判定と同じ扱いにしておく
-      home: new THREE.Vector3(x, 0.3 + h / 2, z),
-      settleTimer: 0,
+      home: new THREE.Vector3(x, G.standTop, z),
     }
+    this.goldState = 'entering'
+    this.goldTimer = 0
     this.objects.push(mesh)
     this.bodies.push(body)
   }
 
-  /** 失敗して転がった金のブロックを、台座へ戻す。 */
-  returnGold() {
+  /**
+   * ボーナスチャレンジの決着。1ゲームに1回きりなので、
+   * 成功でも失敗でも、ここで叩ける状態を終わらせる。
+   */
+  resolveGold(success) {
+    if (this.goldState !== 'ready') return
+    this.goldState = 'resolved'
+    this.goldTimer = 0
     const g = this.gold
     if (!g) return
-    g.body.position.set(g.home.x, CONFIG.bonus.gold.spawnHeight, g.home.z)
-    g.body.velocity.setZero()
-    g.body.angularVelocity.setZero()
-    g.body.quaternion.set(0, 0, 0, 1)
-    g.body.wakeUp()
-    g.settleTimer = 0
-    this.sfx.playDoor()
+    g.state = 'out' // もう叩けない
+    if (success) {
+      // 台座には金色の光だけ残す
+      this.standGlow.intensity = 2.6
+    } else {
+      // くすませて、終わったことを見せる
+      for (const m of g.highlightMats) {
+        m.emissive.setScalar(0)
+        m.color.setHex(0x6d5f3a)
+        m.metalness = 0.4
+      }
+    }
   }
 
   update(dt) {
@@ -299,14 +328,41 @@ export class Bonus {
     if (this.gold) {
       this.gold.mesh.position.copy(this.gold.body.position)
       this.gold.mesh.quaternion.copy(this.gold.body.quaternion)
-      // 台座から落ちたままなら、しばらくして戻す
-      const p = this.gold.body.position
-      const away = Math.hypot(p.x - this.gold.home.x, p.z - this.gold.home.z)
-      if (away > CONFIG.bonus.gold.strayDistance || p.y < -1) {
-        this.gold.settleTimer += dt
-        if (this.gold.settleTimer > CONFIG.bonus.gold.respawnDelay) this.returnGold()
-      } else {
-        this.gold.settleTimer = 0
+      this.updateGoldEntry(dt)
+    }
+    if (this.standGlow && this.standGlow.intensity > 0 && this.goldState === 'resolved') {
+      // ゆっくり明滅させて、成功の余韻を残す
+      this.goldTimer += dt
+      this.standGlow.intensity = 1.8 + Math.sin(this.goldTimer * 3) * 0.7
+    }
+  }
+
+  /** 扉から出てきて台座に乗るまで。乗ったら叩ける状態になる。 */
+  updateGoldEntry(dt) {
+    const G = CONFIG.bonus.gold
+    if (this.goldState === 'entering') {
+      this.goldTimer += dt
+      if (this.goldTimer >= G.entryTime) {
+        // ここから物理に任せる。台座へストンと乗る。
+        const b = this.gold.body
+        b.type = CANNON.Body.DYNAMIC
+        b.mass = G.type.mass
+        b.updateMassProperties()
+        b.velocity.setZero()
+        b.angularVelocity.set(0, 1.5, 0)
+        b.wakeUp()
+        this.goldState = 'settling'
+        this.goldTimer = 0
+      }
+    } else if (this.goldState === 'settling') {
+      this.goldTimer += dt
+      const b = this.gold.body
+      const resting = b.velocity.length() < 0.5 && b.position.y < G.standTop + 0.25
+      if ((resting && this.goldTimer > G.readyDelay) || this.goldTimer > 2.5) {
+        this.goldState = 'ready'
+        this.goldTimer = 0
+        this.standGlow.intensity = 1.2
+        this.onGoldReady?.()
       }
     }
   }

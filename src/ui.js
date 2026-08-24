@@ -45,6 +45,10 @@ export class UI {
     this.achPanel = document.getElementById('ach-panel')
     this.achList = document.getElementById('ach-list')
     this.achCount = document.getElementById('ach-count')
+    this.bonusTag = document.getElementById('bonus-tag')
+    this.bonusHead = this.bonusTag.querySelector('.bt-head')
+    this.bonusSub = this.bonusTag.querySelector('.bt-sub')
+    this.bonusArrow = this.bonusTag.querySelector('.bt-arrow')
     this.openAch = document.getElementById('open-ach')
     this.closeAch = document.getElementById('close-ach')
 
@@ -114,6 +118,25 @@ export class UI {
       this.resultStats.append(dt, dd)
     }
     this.titleName.textContent = `${title.mark} ${title.name} ${title.mark}`
+  }
+
+  // ---- GOLD BLOCK のボーナス案内 ----
+  /**
+   * @param at   {x, y, offscreen, angle} 画面上の位置。null で消す
+   * @param head 大きいほうの文字
+   * @param sub  小さいほうの文字
+   */
+  setBonusTag(at, head, sub) {
+    if (!at) {
+      this.bonusTag.className = ''
+      return
+    }
+    if (head) this.bonusHead.textContent = head
+    if (sub !== undefined) this.bonusSub.textContent = sub
+    this.bonusTag.className = 'show pulse' + (at.offscreen ? ' offscreen' : '')
+    this.bonusTag.style.left = `${at.x}px`
+    this.bonusTag.style.top = `${at.y}px`
+    if (at.offscreen) this.bonusArrow.style.transform = `rotate(${at.angle}rad)`
   }
 
   // ---- 実績 ----

@@ -193,11 +193,12 @@ export const CONFIG = {
     door: { at: [-8.9, 0, 6.7], width: 1.6, height: 2.3, openDelay: 0.45, openTime: 1.1 },
     gold: {
       at: [-5.9, 0, 4.6],    // 台座の位置
-      spawnHeight: 2.6,      // 扉から出てきて、ここから落ちる
+      standTop: 1.05,        // 台座の上あたり。ここへ出てきてから台座へ落ちる
       radius: 0.78,
       height: 0.6,
-      respawnDelay: 1.1,     // 失敗して転がったあと、戻ってくるまで
-      strayDistance: 2.2,    // 台座からこれだけ離れたら戻す
+      entryTime: 0.85,       // 扉から台座まで出てくる時間
+      readyDelay: 0.4,       // 乗ってから BONUS CHANCE! を出すまで
+      resultHold: 1.7,       // 結果を見せてから、通常のだるま落としへ戻るまで
       type: {
         label: 'GOLD',
         mass: 1.3,
