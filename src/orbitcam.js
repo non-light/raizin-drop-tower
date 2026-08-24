@@ -89,12 +89,8 @@ export class OrbitCam {
     this.apply()
   }
 
-  resize() {
-    // 0 になると aspect が NaN になり、何も描かれなくなる
-    const w = Math.max(1, innerWidth)
-    const h = Math.max(1, innerHeight)
+  resize(w, h) {
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
-    return [w, h]
   }
 }

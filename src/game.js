@@ -77,11 +77,23 @@ export class Game {
     this.bindInput()
 
     addEventListener('resize', () => this.resize())
+    // 埋め込みなどで、window のリサイズを伴わずに大きさが変わることがある
+    if (window.ResizeObserver) new ResizeObserver(() => this.resize()).observe(canvas)
     this.resize()
   }
 
+  /**
+   * 画面サイズを測り直す。
+   * innerWidth だけを見ていると、レイアウトが決まる前に呼ばれたときに
+   * 小さいまま固定されてしまうので、キャンバスの実寸を優先して読む。
+   */
   resize() {
-    const [w, h] = this.orbit.resize()
+    const w = Math.max(1, this.canvas.clientWidth || innerWidth || 1)
+    const h = Math.max(1, this.canvas.clientHeight || innerHeight || 1)
+    if (w === this.viewW && h === this.viewH) return
+    this.viewW = w
+    this.viewH = h
+    this.orbit.resize(w, h)
     this.renderer.setSize(w, h, false)
   }
 
@@ -208,8 +220,9 @@ export class Game {
 
   bindInput() {
     const toPointer = (e) => {
-      this.pointer.x = (e.clientX / Math.max(1, innerWidth)) * 2 - 1
-      this.pointer.y = -(e.clientY / Math.max(1, innerHeight)) * 2 + 1
+      const r = this.canvas.getBoundingClientRect()
+      this.pointer.x = ((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1
+      this.pointer.y = -((e.clientY - r.top) / Math.max(1, r.height)) * 2 + 1
     }
 
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
@@ -590,9 +603,10 @@ export class Game {
     this.tmpVec.set(0, this.raizin.view.baseY + CONFIG.raizin.height + 0.25, 0)
     g.localToWorld(this.tmpVec).project(this.camera)
     if (this.tmpVec.z > 1) return null
+    const r = this.canvas.getBoundingClientRect()
     return {
-      x: (this.tmpVec.x * 0.5 + 0.5) * innerWidth,
-      y: (-this.tmpVec.y * 0.5 + 0.5) * innerHeight,
+      x: r.left + (this.tmpVec.x * 0.5 + 0.5) * r.width,
+      y: r.top + (-this.tmpVec.y * 0.5 + 0.5) * r.height,
     }
   }
 
