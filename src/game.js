@@ -24,7 +24,8 @@ const NO_EMISSIVE = new THREE.Color(0x000000)
 
 const JUDGE = {
   weak: { kind: 'weak', text: 'WEAK' },
-  good: { kind: 'perfect', text: 'PERFECT!' },
+  good: { kind: 'good', text: 'GOOD' },
+  perfect: { kind: 'perfect', text: 'PERFECT!' },
   over: { kind: 'danger', text: 'DANGER!' },
   golden: { kind: 'golden', text: 'GOLDEN PERFECT!' },
   goldWeak: { kind: 'goldfail', text: 'TOO WEAK' },
@@ -34,8 +35,9 @@ const JUDGE = {
 // 雷神のひとこと。キャラクターを感じられる程度に短く。
 const LINES = {
   weak: ['よわい…', 'とどかん', 'もうひと押し'],
+  good: ['ぬけた！', 'まずまず', 'おしい…'],
   perfect: ['いいぞ！', 'スコーン！', 'その調子'],
-  danger: ['あぶない！', 'つよすぎ！', 'うおおっ'],
+  over: ['あぶない！', 'つよすぎ！', 'うおおっ'],
   combo: ['いいぞ！', '♪', 'のってきた'],
   hop: ['さいこう！', 'まだいける！'],
   wind: ['ふんばる…', 'かぜが…'],
@@ -48,6 +50,7 @@ const LINES = {
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
+const lerp = (a, b, t) => a + (b - a) * t
 
 /**
  * ブロックが物理的に何かへ触れはじめる距離。
@@ -158,8 +161,8 @@ export class Game {
     this.sfx.resume()
   }
 
-  openStageSelect() {
-    this.ui.renderStages(loadStage(), (id) => this.startStage(id))
+  openStageSelect(canCancel = true) {
+    this.ui.renderStages(loadStage(), (id) => this.startStage(id), canCancel)
   }
 
   resize() {
@@ -393,6 +396,10 @@ export class Game {
       e.stopPropagation()
       this.ui.toggleAchPanel(false)
     })
+    this.ui.closeStage.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.ui.hideStageSelect()
+    })
     this.ui.toResult.addEventListener('click', (e) => {
       e.stopPropagation()
       this.showFinalResult()
@@ -495,7 +502,7 @@ export class Game {
       this.refreshHighlights()
       const shown = this.selected || piece
       this.ui.setBlockType(shown?.type ?? null, shown?.typeKey ?? null)
-      if (shown) this.ui.setZone(shown.type)
+      if (shown) this.ui.setZone(this.bandOf(shown))
     }
   }
 
@@ -503,7 +510,7 @@ export class Game {
     this.selected = piece
     this.aimPoint.copy(this.hitPoint)
     this.ui.setBlockType(piece.type, piece.typeKey)
-    this.ui.setZone(piece.type)
+    this.ui.setZone(this.bandOf(piece))
     this.refreshHighlights()
   }
 
@@ -537,8 +544,10 @@ export class Game {
 
     const H = CONFIG.hit
     const type = piece.type
-    // 「ちょうどいい」の位置はブロックの種類ごとに違う
-    const band = power < type.weakMax ? 'weak' : power <= type.goodMax ? 'good' : 'over'
+    // 「ちょうどいい」の位置はブロックの種類ごとに違い、段が進むほど狭くなる。
+    // GOOD と PERFECT は同じように抜けるので、クリアに PERFECT は要らない。
+    const judge = this.judgeOf(power, piece)
+    const band = judge === 'perfect' ? 'good' : judge
     // 斜めへ抜けるときは移動距離が伸びるので、抜けきるまでの時間が
     // どの向きでも同じになるように速度を上げる。
     const reach = 1 / Math.max(Math.abs(dir.x), Math.abs(dir.z))
@@ -612,7 +621,7 @@ export class Game {
       a.body.applyImpulse(this.impulse, this.offset)
     }
 
-    this.lastBand = band
+    this.lastBand = judge
     this.lastGold = false
     this.state = 'settling'
     this.settleTimer = 0
@@ -633,7 +642,8 @@ export class Game {
   applyGoldHit(piece, power, dir) {
     const H = CONFIG.hit
     const type = piece.type
-    const band = power < type.weakMax ? 'weak' : power <= type.goodMax ? 'good' : 'over'
+    const band = this.judgeOf(power, piece) === 'weak' ? 'weak'
+      : power > type.goodMax ? 'over' : 'good'
     const speed = (H.speedMin + (H.speedMax - H.speedMin) * power) * type.speedScale
     const body = piece.body
     body.wakeUp()
@@ -676,6 +686,49 @@ export class Game {
     return Math.max(-limit, Math.min(limit, lateral)) * k
   }
 
+  /**
+   * いまの難易度。段を抜くほど 0 → 1 へ進み、
+   * カーソルが速くなり、判定の帯が狭くなる。
+   */
+  difficulty() {
+    const D = CONFIG.hit.difficulty
+    const total = Math.max(1, CONFIG.block.count - 1)
+    const t = Math.min(1, (CONFIG.block.count - this.remaining) / total)
+    return {
+      t,
+      cycle: lerp(D.chargeCycle.start, D.chargeCycle.end, t),
+      bandScale: lerp(D.bandScale.start, D.bandScale.end, t),
+      perfectRatio: lerp(D.perfectRatio.start, D.perfectRatio.end, t),
+      wobble: lerp(D.wobble.start, D.wobble.end, t),
+    }
+  }
+
+  /**
+   * そのコマの判定帯。
+   *   lo〜hi   … ここに入れば抜ける（GOOD）
+   *   pLo〜pHi … その中心の芯。ここだけが PERFECT
+   * 金のコマはボーナスなので難易度カーブの対象外。帯ぜんぶが成功。
+   */
+  bandOf(piece) {
+    const type = piece.type
+    if (piece.kind === 'gold') {
+      return { lo: type.weakMax, hi: type.goodMax, pLo: type.weakMax, pHi: type.goodMax }
+    }
+    const d = this.difficulty()
+    const center = (type.weakMax + type.goodMax) / 2
+    const half = ((type.goodMax - type.weakMax) / 2) * d.bandScale
+    const pHalf = half * d.perfectRatio
+    return { lo: center - half, hi: center + half, pLo: center - pHalf, pHi: center + pHalf }
+  }
+
+  /** WEAK / GOOD / PERFECT / DANGER のどれか。 */
+  judgeOf(power, piece) {
+    const b = this.bandOf(piece)
+    if (power < b.lo) return 'weak'
+    if (power > b.hi) return 'over'
+    return power >= b.pLo && power <= b.pHi ? 'perfect' : 'good'
+  }
+
   /** 「強すぎ」の踏み越え具合を 0〜1 で返す。少し超えただけでも効くよう曲げてある。 */
   overhitExcess(power, type) {
     const H = CONFIG.hit
@@ -694,7 +747,11 @@ export class Game {
     this.time += dt
 
     if (this.state === 'charging') {
-      const rate = 1 / CONFIG.hit.chargeCycle
+      const d = this.difficulty()
+      // 完全な一定往復だとリズムだけで取れてしまうので、
+      // 終盤ほど、見て反応できる程度のゆらぎを混ぜる。
+      const wob = 1 + d.wobble * Math.sin(this.time * CONFIG.hit.difficulty.wobbleSpeed)
+      const rate = (1 / d.cycle) * wob
       this.power += this.powerDir * rate * dt
       if (this.power >= 1) {
         this.power = 1
@@ -948,6 +1005,15 @@ export class Game {
     this.ui.showJudge(j.kind, j.text)
 
     if (band === 'good' && !failed) {
+      // GOOD。抜けてはいるので失敗ではないが、コンボはここで途切れる。
+      // COMBO GUARD を持っていれば1回だけ守られる。
+      this.afterMiss('good')
+      this.lastBand = null
+      this.lastGold = false
+      return
+    }
+
+    if (band === 'perfect' && !failed) {
       this.combo++
       this.ui.showCombo(this.combo)
       this.sfx.playCombo(this.combo)
@@ -977,7 +1043,7 @@ export class Game {
     this.lastGold = false
   }
 
-  /** WEAK / DANGER のあと。ガードがあれば1回だけコンボを守る。 */
+  /** PERFECT 以外のあと。ガードがあれば1回だけコンボを守る。 */
   afterMiss(band) {
     if (this.comboGuard > 0) {
       // GOLDEN PERFECT のごほうび。1回だけコンボが切れない。
@@ -988,7 +1054,7 @@ export class Game {
     }
     // PERFECT 以外はコンボ終了。分かりやすさを優先して例外は作らない。
     this.combo = 0
-    this.say(pick(band === 'weak' ? LINES.weak : LINES.danger), 1.3)
+    this.say(pick(LINES[band] || LINES.good), 1.3)
   }
 
   onDoorOpen() {

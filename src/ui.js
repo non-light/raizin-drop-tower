@@ -8,6 +8,7 @@ export class UI {
     this.fill = document.getElementById('gauge-fill')
     this.pct = document.getElementById('gauge-pct')
     this.zone = document.getElementById('gauge-zone-good')
+    this.zonePerfect = document.getElementById('gauge-zone-perfect')
     this.markLo = document.getElementById('gauge-mark-lo')
     this.markHi = document.getElementById('gauge-mark-hi')
     this.remain = document.getElementById('remain')
@@ -56,9 +57,11 @@ export class UI {
     this.openAch = document.getElementById('open-ach')
     this.stageBtn = document.getElementById('open-stage')
     this.closeAch = document.getElementById('close-ach')
+    this.closeStage = document.getElementById('close-stage')
 
     this.bubbleUntil = 0
-    this.setZone(CONFIG.blockTypes.normal)
+    const n = CONFIG.blockTypes.normal
+    this.setZone({ lo: n.weakMax, hi: n.goodMax, pLo: n.weakMax, pHi: n.goodMax })
   }
 
   // ---- ミッション ----
@@ -126,7 +129,9 @@ export class UI {
   }
 
   // ---- ステージ選択 ----
-  renderStages(currentId, onPick) {
+  renderStages(currentId, onPick, canCancel) {
+    // 最初の1回は必ず選んでもらう。結果画面から開いたときは戻れるようにする。
+    this.closeStage.classList.toggle('hidden', !canCancel)
     this.stageList.innerHTML = ''
     const cards = [...STAGES, { id: 'random', name: 'RANDOM', nameJa: 'おまかせ', blurb: '4つから1つ選ばれる', sky: 0x555a72 }]
     for (const st of cards) {
@@ -247,12 +252,17 @@ export class UI {
     this.soundBtn.classList.toggle('muted', muted)
   }
 
-  /** ゲージの緑帯を、いま狙っているブロックの種類に合わせる。 */
-  setZone(type) {
-    const lo = type.weakMax * 100
-    const hi = type.goodMax * 100
+  /**
+   * ゲージの帯を、いま狙っているコマと難易度に合わせる。
+   * 緑が GOOD（抜ける範囲）、その中の金色が PERFECT の芯。
+   */
+  setZone(band) {
+    const lo = band.lo * 100
+    const hi = band.hi * 100
     this.zone.style.left = `${lo}%`
     this.zone.style.width = `${hi - lo}%`
+    this.zonePerfect.style.left = `${band.pLo * 100}%`
+    this.zonePerfect.style.width = `${(band.pHi - band.pLo) * 100}%`
     this.markLo.style.left = `${lo}%`
     this.markHi.style.left = `${hi}%`
   }

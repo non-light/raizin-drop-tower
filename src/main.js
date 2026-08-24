@@ -14,7 +14,7 @@ loadRaizinSprites({ front, left, right, back }).then((sprites) => {
   const game = new Game(document.getElementById('scene'), sprites)
   game.start()
   // 最初にステージを選んでもらう。裏では前回のステージが組んである。
-  game.openStageSelect()
+  game.openStageSelect(false) // 最初の1回は必ず選んでもらう
   // 調整用。ブラウザのコンソールから window.game.cfg でパラメータを触れる
   window.game = game
 })

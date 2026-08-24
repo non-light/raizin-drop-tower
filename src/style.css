@@ -92,21 +92,29 @@ html, body {
   overflow: hidden;
 }
 
-/* 「ちょうどいい」帯。操作感を確かめる初期版なので、あえて見せている */
+/* 外側が GOOD（抜ける）、その中心の芯だけが PERFECT。 */
+/* 帯はフィルより手前。溜まっている最中も、どこが芯なのか見えるようにする。 */
 #gauge-zone-good {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(80, 230, 150, 0.18);
+  z-index: 2;
+  background: rgba(80, 230, 150, 0.20);
+  border-left: 1px solid rgba(120, 255, 190, 0.5);
+  border-right: 1px solid rgba(120, 255, 190, 0.5);
 }
 
-.gauge-mark {
+#gauge-zone-perfect {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
-  background: rgba(120, 255, 190, 0.55);
+  z-index: 3;
+  background: rgba(255, 216, 94, 0.30);
+  border-left: 1px solid rgba(255, 226, 130, 0.9);
+  border-right: 1px solid rgba(255, 226, 130, 0.9);
 }
+
+.gauge-mark { display: none; }
 
 #gauge-fill {
   position: absolute;
@@ -135,9 +143,16 @@ html, body {
 #hint b { color: rgba(220, 232, 255, 0.85); font-weight: 600; }
 
 /* --- 結果表示 --- */
+/*
+ * 重なり順。指定しないと DOM の並び順で決まるため、
+ * あとから足したパネルが結果画面の裏に開いてしまう。
+ *   盤面のふきだし(5) < 結果画面(10) < 実績一覧(20) < ステージ選択(30)
+ * 音のボタンは結果画面の上に置いて、いつでも押せるようにする。
+ */
 #result {
   position: absolute;
   inset: 0;
+  z-index: 10;
   display: none;
   align-items: center;
   justify-content: center;
@@ -246,6 +261,7 @@ html, body {
 
 #judge.show { animation: judgePop 0.95s ease-out forwards; }
 #judge.weak { color: #9fb4d8; }
+#judge.good { color: #8ff0b6; font-size: 34px; }
 #judge.perfect { color: #ffd85e; }
 #judge.danger { color: #ff6a5a; }
 
@@ -425,6 +441,7 @@ html, body {
   position: absolute;
   right: 18px;
   bottom: 22px;
+  z-index: 15;
   pointer-events: auto;
   width: 38px;
   height: 38px;
@@ -677,6 +694,7 @@ html, body {
 #ach-panel {
   position: absolute;
   inset: 0;
+  z-index: 20;
   display: none;
   align-items: center;
   justify-content: center;
@@ -728,6 +746,22 @@ html, body {
   font-size: 11px;
   color: rgba(150, 165, 195, 0.55);
 }
+
+#close-stage {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 13px;
+  margin-top: 18px;
+  padding: 9px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(150, 180, 255, 0.35);
+  background: transparent;
+  color: rgba(214, 226, 255, 0.85);
+  cursor: pointer;
+}
+
+#close-stage:hover { background: rgba(60, 76, 116, 0.5); }
+#close-stage.hidden { display: none; }
 
 #close-ach {
   pointer-events: auto;
@@ -799,6 +833,7 @@ html, body {
 #stage-select {
   position: absolute;
   inset: 0;
+  z-index: 30;
   display: none;
   align-items: center;
   justify-content: center;
