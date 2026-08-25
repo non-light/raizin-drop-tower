@@ -7,14 +7,30 @@ import { CONFIG } from './config.js'
  * exclusive が同じもの同士は同時に出さない（3COMBO と 5COMBO のような上位互換を避ける）。
  */
 export const MISSION_LIST = [
-  { id: 'perfect3', text: 'PERFECTを3回成功させる', rank: 'EASY', target: 3, exclusive: 'perfect', read: (s) => s.perfects },
-  { id: 'heavyPerfect', text: 'HEAVYをPERFECTで抜く', rank: 'EASY', target: 1, read: (s) => s.perfectByType.heavy },
-  { id: 'slipperyPerfect', text: 'SLIPPERYをPERFECTで抜く', rank: 'EASY', target: 1, read: (s) => s.perfectByType.slippery },
-  { id: 'bell', text: '鐘を鳴らす', rank: 'EASY', target: 1, read: (s) => s.bellHits },
+  // --- EASY ---
+  { id: 'perfect3', text: 'PERFECTを3回きめる', rank: 'EASY', target: 3, exclusive: 'perfect', read: (s) => s.perfects },
+  { id: 'heavyPerfect', text: 'HEAVYをPERFECTで抜く', rank: 'EASY', target: 1, exclusive: 'type', read: (s) => s.perfectByType.heavy },
+  { id: 'slipperyPerfect', text: 'SLIPPERYをPERFECTで抜く', rank: 'EASY', target: 1, exclusive: 'type', read: (s) => s.perfectByType.slippery },
+  { id: 'bell', text: '鐘を鳴らす', rank: 'EASY', target: 1, exclusive: 'bell', read: (s) => s.bellHits },
+  { id: 'crate', text: '木箱にぶつける', rank: 'EASY', target: 1, read: (s) => s.crateHits },
+  { id: 'cans2', text: '空き缶を2個倒す', rank: 'EASY', target: 2, exclusive: 'cans', read: (s) => s.cansToppled },
+
+  // --- NORMAL ---
   { id: 'combo3', text: '3 COMBOを達成する', rank: 'NORMAL', target: 3, exclusive: 'combo', read: (s) => s.maxCombo },
-  { id: 'cans3', text: '空き缶を3個倒す', rank: 'NORMAL', target: 3, read: (s) => s.cansToppled },
+  { id: 'perfect6', text: 'PERFECTを6回きめる', rank: 'NORMAL', target: 6, exclusive: 'perfect', read: (s) => s.perfects },
+  { id: 'cans4', text: '空き缶を4個倒す', rank: 'NORMAL', target: 4, exclusive: 'cans', read: (s) => s.cansToppled },
+  { id: 'bell2', text: '鐘を2回鳴らす', rank: 'NORMAL', target: 2, exclusive: 'bell', read: (s) => s.bellHits },
   { id: 'door', text: '隠し扉を開ける', rank: 'NORMAL', target: 1, read: (s) => s.doorOpened },
+  { id: 'windPerfect', text: '風のなかでPERFECTをきめる', rank: 'NORMAL', target: 1, read: (s) => s.windPerfects },
+  { id: 'darkPerfect', text: '暗雲のなかでPERFECTをきめる', rank: 'NORMAL', target: 1, exclusive: 'dark', read: (s) => s.darkPerfects },
+  { id: 'noWeak', text: 'WEAKを出さずにクリアする', rank: 'NORMAL', target: 1, exclusive: 'clean', read: (s) => (s.cleared && s.weaks === 0 ? 1 : 0) },
+
+  // --- HARD ---
   { id: 'combo5', text: '5 COMBOを達成する', rank: 'HARD', target: 5, exclusive: 'combo', read: (s) => s.maxCombo },
+  { id: 'allTypes', text: '3種類すべてをPERFECTで抜く', rank: 'HARD', target: 3, exclusive: 'type',
+    read: (s) => ['normal', 'heavy', 'slippery'].filter((k) => s.perfectByType[k] > 0).length },
+  { id: 'noDanger', text: 'DANGERを出さずにクリアする', rank: 'HARD', target: 1, exclusive: 'clean', read: (s) => (s.cleared && s.dangers === 0 ? 1 : 0) },
+  { id: 'dark2', text: '暗雲のなかでPERFECTを2回', rank: 'HARD', target: 2, exclusive: 'dark', read: (s) => s.darkPerfects },
   { id: 'golden', text: 'GOLDEN PERFECTを成功させる', rank: 'HARD', target: 1, read: (s) => s.goldenPerfects },
 ]
 
@@ -58,6 +74,7 @@ export function newStats() {
     perfectByType: { normal: 0, heavy: 0, slippery: 0, gold: 0 },
     bellHits: 0,
     cansToppled: 0,
+    crateHits: 0,
     doorOpened: 0,
     goldenPerfects: 0,
     windPerfects: 0, // 強い風の最中に決めた PERFECT

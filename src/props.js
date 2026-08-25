@@ -24,6 +24,7 @@ export class Props {
     this.bell = null
     this.bellHits = 0
     this.cansToppled = 0
+    this.crateHits = 0
 
     if (!CONFIG.props.enabled) return
     this.addBell(mats)
@@ -224,7 +225,10 @@ export class Props {
       body.allowSleep = true
       body.sleepSpeedLimit = 0.14
       body.sleepTimeLimit = 0.5
-      this.track(mesh, body, 'crate', (p) => this.sfx.playCrate(p))
+      this.track(mesh, body, 'crate', (p) => {
+        this.crateHits++
+        this.sfx.playCrate(p)
+      })
     }
   }
 

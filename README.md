@@ -159,11 +159,15 @@ HARD が2つ同時に出ることはなく、HARD が入ったら相方は EASY 
 `3 COMBO` と `5 COMBO` のような上位互換の組み合わせも出ません。
 リスタートのたびに選び直し、直前とまったく同じ組み合わせは避けます。
 
+全19種類あります。
+
 | 難易度 | ミッション |
 | --- | --- |
-| EASY | PERFECTを3回成功させる／HEAVYをPERFECTで抜く／SLIPPERYをPERFECTで抜く／鐘を鳴らす |
-| NORMAL | 3 COMBOを達成する／空き缶を3個倒す／隠し扉を開ける |
-| HARD | 5 COMBOを達成する／GOLDEN PERFECTを成功させる |
+| EASY | PERFECTを3回／HEAVYをPERFECTで抜く／SLIPPERYをPERFECTで抜く／鐘を鳴らす／木箱にぶつける／空き缶を2個倒す |
+| NORMAL | 3 COMBO／PERFECTを6回／空き缶を4個／鐘を2回／隠し扉を開ける／風のなかでPERFECT／暗雲のなかでPERFECT／WEAKなしでクリア |
+| HARD | 5 COMBO／3種類すべてをPERFECTで抜く／DANGERなしでクリア／暗雲のなかでPERFECTを2回／GOLDEN PERFECT |
+
+同じ系統（コンボ系、缶系、鐘系、きれいにクリア系など）が2つ同時に出ることはありません。
 
 ## 称号と隠し実績
 

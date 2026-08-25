@@ -57,7 +57,7 @@ html, body {
 #gauge-wrap {
   position: absolute;
   left: 50%;
-  bottom: 62px;
+  bottom: 68px;
   transform: translateX(-50%);
   width: min(460px, 78vw);
   display: grid;
@@ -128,7 +128,7 @@ html, body {
 #hint {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 16px;
   transform: translateX(-50%);
   display: flex;
   flex-wrap: wrap;
@@ -335,20 +335,20 @@ html, body {
   position: absolute;
   top: 58px;
   right: 18px;
-  width: 232px;
-  padding: 10px 13px 12px;
-  border-radius: 10px;
-  background: rgba(10, 16, 30, 0.6);
-  border: 1px solid rgba(150, 180, 255, 0.22);
-  backdrop-filter: blur(4px);
-  font-size: 12px;
+  width: 288px;
+  padding: 12px 15px 13px;
+  border-radius: 12px;
+  background: rgba(10, 16, 30, 0.72);
+  border: 1px solid rgba(150, 180, 255, 0.28);
+  backdrop-filter: blur(5px);
+  font-size: 14px;
 }
 
 .mission-head {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.22em;
-  color: rgba(170, 195, 245, 0.75);
-  margin-bottom: 7px;
+  color: rgba(180, 202, 248, 0.85);
+  margin-bottom: 9px;
 }
 
 #mission-list,
@@ -359,20 +359,28 @@ html, body {
 }
 
 #mission-list li {
-  display: flex;
+  display: grid;
+  grid-template-columns: 15px 1fr auto;
   align-items: baseline;
-  gap: 6px;
-  padding: 3px 0;
-  color: rgba(224, 233, 252, 0.86);
-  line-height: 1.35;
+  gap: 2px 7px;
+  padding: 6px 0;
+  color: rgba(232, 239, 255, 0.95);
+  line-height: 1.45;
 }
 
-#mission-list li .mk { color: rgba(150, 175, 220, 0.7); }
+#mission-list li + li { border-top: 1px solid rgba(150, 180, 255, 0.12); }
+
+#mission-list li .mk {
+  font-size: 14px;
+  color: rgba(160, 185, 230, 0.8);
+}
+
 #mission-list li .pg {
-  margin-left: auto;
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  color: rgba(170, 195, 245, 0.7);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: rgba(190, 212, 255, 0.85);
 }
 
 #mission-list li.done { color: #8ff0b6; }
@@ -1013,4 +1021,18 @@ html, body {
 @keyframes hzPulse {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
+}
+
+/* --- 狭い画面 --- */
+/* ヒントが折り返してゲージに重なるので、キーの案内は畳んで、ゲージを上げる */
+@media (max-width: 820px) {
+  #hint .keys { display: none; }
+  #hint { font-size: 11px; }
+  #gauge-wrap { bottom: 78px; width: min(460px, 86vw); }
+  #missions { width: 244px; font-size: 13px; padding: 10px 12px 11px; }
+}
+
+@media (max-width: 560px) {
+  #missions { width: 200px; font-size: 12px; }
+  #gauge-wrap { bottom: 74px; }
 }

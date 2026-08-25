@@ -1235,6 +1235,7 @@ export class Game {
     const st = this.missions.stats
     st.bellHits = this.props.bellHits
     st.cansToppled = this.props.cansToppled
+    st.crateHits = this.props.crateHits
     st.missionsDone = this.missions.completed
     st.missionsTotal = this.missions.list.length
     this.checkAchievements()
